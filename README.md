@@ -10,3 +10,10 @@ pip install orderedmultidict
 
 make
 ```
+
+# Dependencies
+
+- CMake (version 3.20 or more)
+- Ninja
+- NOTE: Maybe more
+
