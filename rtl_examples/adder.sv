@@ -14,5 +14,3 @@ module adder (
     assign cout = full_sum[8];
 
 endmodule : adder
-
-
