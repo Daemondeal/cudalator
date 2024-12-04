@@ -1,4 +1,4 @@
-#include "include/SampleListener.h"
+#include "SampleListener.hpp"
 
 #include <uhdm/uhdm.h>
 

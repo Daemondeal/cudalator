@@ -13,7 +13,7 @@ add_executable(
     cudalator
     src/main.cpp
     src/SampleListener.cpp
-    src/include/SampleListener.h
+    src/SampleListener.hpp
 )
 
 target_include_directories(

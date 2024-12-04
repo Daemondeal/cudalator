@@ -2,15 +2,12 @@
 // cd tests/UnitElabBlock
 // hellodesign top.v -parse -mutestdout
 
-#include <cstdint>
-#include <functional>
 #include <iostream>
-#include <string_view>
 
-#include "Surelog/API/Surelog.h"
-#include "Surelog/CommandLine/CommandLineParser.h"
-#include "Surelog/ErrorReporting/ErrorContainer.h"
-#include "Surelog/SourceCompile/SymbolTable.h"
+#include <Surelog/API/Surelog.h>
+#include <Surelog/CommandLine/CommandLineParser.h>
+#include <Surelog/ErrorReporting/ErrorContainer.h>
+#include <Surelog/SourceCompile/SymbolTable.h>
 
 // UHDM
 #include <uhdm/ElaboratorListener.h>
@@ -18,7 +15,7 @@
 #include <uhdm/uhdm.h>
 #include <uhdm/vpi_user.h>
 
-#include "include/SampleListener.h"
+#include "SampleListener.hpp"
 
 static bool run_sample_listener(const vpiHandle &design_handle) {
     SampleListener listener;
