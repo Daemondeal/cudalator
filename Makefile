@@ -12,7 +12,7 @@ LIB_DIR := $(ROOT_DIR)/libraries
 	cd build && ninja
 
 run: ./build/$(EXE)
-	./build/$(EXE) ./rtl_examples/adder.sv -parse -mutestdout
+	./build/$(EXE) ./rtl_examples/adder.sv
 
 
 ./build/build.ninja: CMakeLists.txt $(LIB_DIR)/.timestamp

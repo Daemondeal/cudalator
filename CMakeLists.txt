@@ -9,7 +9,12 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 link_directories(${CMAKE_SOURCE_DIR}/libraries/lib)
 
-add_executable(cudalator src/main.cpp)
+add_executable(
+    cudalator
+    src/main.cpp
+    src/SampleListener.cpp
+    src/include/SampleListener.h
+)
 
 target_include_directories(
     cudalator
