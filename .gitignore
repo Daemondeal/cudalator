@@ -3,6 +3,10 @@ slpp_all/*
 libraries/*
 compile_commands.json
 
+build
+slpp_all
+libraries
+
 ./build
 CMakeLists.txt.user
 CMakeCache.txt
