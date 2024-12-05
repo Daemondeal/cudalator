@@ -19,7 +19,7 @@ target_include_directories(
     PRIVATE ${CMAKE_SOURCE_DIR}/include
 )
 
-add_subdirectory(src/frontend_sv)
+add_subdirectory(src/frontend-sv)
 target_link_libraries(
     cudalator-compiler
     PRIVATE cudalator-frontend-sv

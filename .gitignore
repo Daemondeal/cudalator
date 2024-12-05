@@ -6,6 +6,7 @@ compile_commands.json
 build
 slpp_all
 libraries
+site
 
 ./build
 CMakeLists.txt.user

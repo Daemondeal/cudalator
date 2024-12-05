@@ -1,4 +1,4 @@
-#include "frontend_sv/Entry.hpp"
+#include "frontend-sv/Entry.hpp"
 
 #include <iostream>
 

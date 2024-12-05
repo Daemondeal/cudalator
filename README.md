@@ -6,7 +6,8 @@ Project for the course GPU Programming, a.y. 2024/2025.
 
 1. [How to build](#how-to-build)
 2. [Folder Structure](#folder-structure)
-3. [Dependencies](#dependencies)
+3. [Docs](#docs)
+4. [Dependencies](#dependencies)
 
 
 ## How to build
@@ -29,6 +30,13 @@ You can run `make run` to run the code on an example circuit
     - `src`: the actual runtime that handles kernel scheduling.
 - `src`: the sources for the compiler itself.
 - `third_party`: the submodules for external packages.
+
+## Docs
+
+Docs are available at [https://daemondeal.github.io/cudalator/](https://daemondeal.github.io/cudalator/). You can also read them locally by running run `mkdocs serve`.
+
+
+If you are a contributor, run `mkdocs gh-deploy` whenever you modify the docs.
 
 ## Dependencies
 
