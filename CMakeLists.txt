@@ -1,27 +1,24 @@
 cmake_minimum_required(VERSION 3.20)
 project(
-    cudalator
+    cudalator-compiler
     VERSION 0.1.0
-    LANGUAGES CXX)
+    LANGUAGES CXX
+)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-link_directories(${CMAKE_SOURCE_DIR}/libraries/lib)
+link_directories(${CMAKE_SOURCE_DIR}/build/libraries/lib)
 
 add_executable(
-    cudalator
+    cudalator-compiler
     src/main.cpp
-    src/SampleListener.cpp
-    src/SampleListener.hpp
 )
 
-target_include_directories(
-    cudalator
-    PRIVATE ${CMAKE_SOURCE_DIR}/libraries/include
-)
-
+add_subdirectory(src/frontend_sv)
 target_link_libraries(
-    cudalator
-    PRIVATE surelog uhdm antlr4-runtime capnp kj z
+    cudalator-compiler
+    PRIVATE cudalator-frontend-sv
 )
+
+

@@ -1,34 +1,39 @@
 .SUFFIXES:
-.PHONY: run clean purge
+.PHONY: run clean purge .dummy
 
-SOURCES := src/*.cpp
-
-EXE := cudalator
+EXE := cudalator-compiler
+COMPILER_BUILD := ./build/cudalator
+EXE_PATH := $(COMPILER_BUILD)/$(EXE)
 
 ROOT_DIR := $(shell pwd)
-LIB_DIR := $(ROOT_DIR)/libraries
+LIB_DIR := $(ROOT_DIR)/build/libraries
 
-./build/$(EXE): ./build/build.ninja $(SOURCES)
-	cd build && ninja
+$(EXE_PATH): $(COMPILER_BUILD)/build.ninja .dummy
+	cd $(COMPILER_BUILD) && ninja
 
-run: ./build/$(EXE)
-	./build/$(EXE) ./rtl_examples/adder.sv
+.dummy:
+	@# Used for forcing a rebuild always
+
+run: $(EXE_PATH)
+	$(EXE_PATH) ./data/rtl/adder.sv
 
 
-./build/build.ninja: CMakeLists.txt $(LIB_DIR)/.timestamp
-	cmake -B build -G Ninja
+$(COMPILER_BUILD)/build.ninja: CMakeLists.txt $(LIB_DIR)/.timestamp
+	mkdir -p build
+	cmake -B $(COMPILER_BUILD) -G Ninja
 
 $(LIB_DIR)/.timestamp:
 	@echo '### BUILDING SURELOG ###'
 	@echo ''
 
-	cd ./third_party/Surelog/ && $(MAKE)
-	cd ./third_party/Surelog/ && $(MAKE) PREFIX=$(LIB_DIR) install
+	mkdir -p $(LIB_DIR)
+	cd ./external/Surelog/ && $(MAKE)
+	cd ./external/Surelog/ && $(MAKE) PREFIX=$(LIB_DIR) install
 	touch $(LIB_DIR)/.timestamp
 
 
 clean:
-	rm -rf build
+	rm -rf $(COMPILER_BUILD)
 
 purge:
-	rm -rf build libraries
+	rm -rf build
