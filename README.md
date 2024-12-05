@@ -5,16 +5,15 @@ Project for the course GPU Programming, a.y. 2024/2025.
 ## Table of contents
 
 1. [How to build](#how-to-build)
-2. [Folder Structure](#folder-structure)
-3. [Docs](#docs)
-4. [Dependencies](#dependencies)
+2. [Docs](#docs)
+3. [Dependencies](#dependencies)
 
 
 ## How to build
 
 ```sh
 git submodule update --init --depth 1 --recursive
-pip install orderedmultidict
+pip install -r requirements.txt
 
 make
 ```
@@ -43,5 +42,6 @@ If you are a contributor, run `mkdocs gh-deploy` whenever you modify the docs.
 - CMake (version 3.21 or more)
 - Ninja
 - CUDA
-- Probably more hopefully at some point we will discover this
+- Python 3
+- Probably more
 

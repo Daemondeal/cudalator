@@ -1,0 +1,12 @@
+site_name: Cudalator
+
+nav:
+  - Home: index.md
+
+theme:
+  name: material
+  palette:
+    scheme: slate
+
+plugins:
+  - search
