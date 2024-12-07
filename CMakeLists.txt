@@ -20,6 +20,7 @@ target_include_directories(
 )
 
 add_subdirectory(src/frontend-sv)
+
 target_link_libraries(
     cudalator-compiler
     PRIVATE cudalator-frontend-sv
