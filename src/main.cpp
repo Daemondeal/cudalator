@@ -1,6 +1,8 @@
 #include "frontend-sv/Entry.hpp"
 
+#include <spdlog/spdlog.h>
 #include <cir/CIR.h>
+
 
 #include <functional>
 #include <iostream>
@@ -11,6 +13,10 @@ int main(int argc, const char **argv) {
         std::cerr << "USAGE: cudalator-compiler <path-to-sv-file>\n";
         return -1;
     }
+
+    // TODO: Make this configurable
+    spdlog::set_level(spdlog::level::debug);
+    spdlog::set_pattern("[%^%l%$] %v");
 
     std::string source_path(argv[1]);
 

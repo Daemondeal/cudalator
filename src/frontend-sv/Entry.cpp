@@ -8,6 +8,7 @@
 #include <Surelog/SourceCompile/SymbolTable.h>
 
 // UHDM
+#include <spdlog/spdlog.h>
 #include <uhdm/ElaboratorListener.h>
 #include <uhdm/VpiListener.h>
 #include <uhdm/uhdm.h>
@@ -20,15 +21,14 @@
 namespace cudalator {
 
 static bool run_sample_listener(const vpiHandle &design_handle) {
-    // SampleListener listener;
     SurelogParser parser;
 
-    // std::cout << "Start of design traversal\n";
-    // listener.listenDesigns({design_handle});
-    // std::cout << "End design traversal\n";
 
-    std::cout << "Starting the parsing\n";
+    spdlog::debug("Starting the parser");
+
     parser.parse(design_handle);
+
+    spdlog::debug("Parser Done");
     return true;
 }
 
@@ -50,12 +50,12 @@ void compile_sv_to_cil(std::vector<std::string> sources) {
     clp->setElabUhdm(true);  // Request UHDM Uniquification/Elaboration
 
     // NOTE(Pietro): A bit hacky but it's the easiest way I found to give it the input file
-    std::cerr << "FIXME: ONLY COMPILING THE FIRST SOURCE\n";
+    spdlog::warn("FIXME: ONLY COMPILING THE FIRST SOURCE");
     std::string path = sources[0];
     char const *args[2] = {"", path.c_str()};
     clp->parseCommandLine(2, args);
 
-    errors->printMessages(clp->muteStdout());
+    // errors->printMessages(clp->muteStdout());
 
     // Compile Design
     vpiHandle vpi_design = nullptr;
@@ -66,7 +66,7 @@ void compile_sv_to_cil(std::vector<std::string> sources) {
 
     // Handle errors
     auto stats = errors->getErrorStats();
-    errors->printStats(stats, false);
+    // errors->printStats(stats, false);
     if (vpi_design == nullptr)
         return;
         // return false;

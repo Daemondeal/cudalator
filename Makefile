@@ -5,8 +5,8 @@ EXE := cudalator-compiler
 COMPILER_BUILD := ./build/cudalator
 EXE_PATH := $(COMPILER_BUILD)/$(EXE)
 
-ROOT_DIR := $(shell pwd)
-LIB_DIR := $(ROOT_DIR)/build/libraries
+# ROOT_DIR := $(shell pwd)
+LIB_DIR := ./build/libraries
 
 $(EXE_PATH): $(COMPILER_BUILD)/build.ninja .dummy
 	cd $(COMPILER_BUILD) && ninja
@@ -18,7 +18,7 @@ run: $(EXE_PATH)
 	$(EXE_PATH) ./data/rtl/adder.sv
 
 
-$(COMPILER_BUILD)/build.ninja: CMakeLists.txt $(LIB_DIR)/.timestamp
+$(COMPILER_BUILD)/build.ninja: CMakeLists.txt $(LIB_DIR)/.timestamp $(LIB_DIR)/spdlog.timestamp
 	mkdir -p build
 	cmake -B $(COMPILER_BUILD) -G Ninja
 
@@ -30,6 +30,15 @@ $(LIB_DIR)/.timestamp:
 	cd ./external/Surelog/ && $(MAKE)
 	cd ./external/Surelog/ && $(MAKE) PREFIX=$(LIB_DIR) install
 	touch $(LIB_DIR)/.timestamp
+
+$(LIB_DIR)/spdlog.timestamp:
+	@echo '### BUILDING SPDLOG ###'
+	@echo ''
+
+	mkdir -p $(LIB_DIR)
+	mkdir -p ./external/spdlog/build
+	cd ./external/spdlog/build && cmake .. && cmake --build .
+	touch $(LIB_DIR)/spdlog.timestamp
 
 
 clean:

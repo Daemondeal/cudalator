@@ -2,6 +2,7 @@
 #include "uhdm/uhdm_types.h"
 #include "uhdm/vpi_user.h"
 #include <iostream>
+#include <spdlog/spdlog.h>
 
 namespace cudalator {
 SurelogParser::SurelogParser() {}
@@ -15,20 +16,17 @@ void SurelogParser::parse(const vpiHandle& handle) {
 
         while (vpiHandle child = vpi_scan(itr)) {
             auto child_type = vpi_get(vpiType, child);
-            std::cout << child_type << std::endl;
         }
 
-        std::cout << "Design\n";
+        spdlog::debug("Visiting Design Node");
     } break;
     case vpiModule: {
-        std::cout << "Module\n";
+        spdlog::debug("Visiting Module Node");
     } break;
     default: {
-        std::cout << "Unknown type " << object_type << "\n";
+        spdlog::error("Unknown type found: {}", object_type);
     } break;
     }
-
-    std::cout << "This is a test\n";
 }
 
 }; // namespace cudalator

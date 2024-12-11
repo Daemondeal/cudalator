@@ -10,6 +10,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 link_directories(${CMAKE_SOURCE_DIR}/build/libraries/lib)
 
+find_package(spdlog REQUIRED)
+
 add_executable(
     cudalator-compiler
     src/main.cpp
@@ -26,4 +28,7 @@ target_link_libraries(
     PRIVATE cudalator-frontend-sv
 )
 
-
+target_link_libraries(
+    cudalator-compiler
+    PRIVATE spdlog::spdlog
+)
