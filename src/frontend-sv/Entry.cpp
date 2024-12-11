@@ -1,6 +1,5 @@
 #include "Entry.hpp"
 
-#include <iostream>
 
 #include <Surelog/API/Surelog.h>
 #include <Surelog/CommandLine/CommandLineParser.h>
@@ -14,7 +13,6 @@
 #include <uhdm/uhdm.h>
 #include <uhdm/vpi_user.h>
 
-#include "SampleListener.hpp"
 #include "SurelogParser.hpp"
 
 

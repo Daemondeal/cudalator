@@ -3,8 +3,6 @@
 #include <spdlog/spdlog.h>
 #include <cir/CIR.h>
 
-
-#include <functional>
 #include <iostream>
 #include <vector>
 
