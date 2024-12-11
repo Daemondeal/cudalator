@@ -14,17 +14,21 @@
 #include <uhdm/vpi_user.h>
 
 #include "SampleListener.hpp"
+#include "SurelogParser.hpp"
 
 
 namespace cudalator {
 
 static bool run_sample_listener(const vpiHandle &design_handle) {
-    SampleListener listener;
+    // SampleListener listener;
+    SurelogParser parser;
 
-    std::cout << "Start of design traversal\n";
-    listener.listenDesigns({design_handle});
-    std::cout << "End design traversal\n";
+    // std::cout << "Start of design traversal\n";
+    // listener.listenDesigns({design_handle});
+    // std::cout << "End design traversal\n";
 
+    std::cout << "Starting the parsing\n";
+    parser.parse(design_handle);
     return true;
 }
 

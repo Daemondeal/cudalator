@@ -2,6 +2,8 @@ add_library(
     cudalator-frontend-sv
     ./SampleListener.hpp
     ./SampleListener.cpp
+    ./SurelogParser.cpp
+    ./SurelogParser.hpp
     ./Entry.cpp
     ./Entry.hpp
 )

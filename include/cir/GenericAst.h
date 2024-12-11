@@ -7,7 +7,7 @@
 
 namespace cir {
 
-using NodeIndex = std::uint64_t;
+using NodeIndex = uint32_t;
 
 template <typename Node>
 struct NodeVector {
@@ -16,12 +16,12 @@ public:
         return m_storage[index];
     }
 
-    Node* getPtr(NodeIndex index) {
-        return &m_storage[index];
-    }
-
     const Node& get(NodeIndex index) const {
         return m_storage[index];
+    }
+
+    NodeIndex *getPtr(NodeIndex index) {
+        return &m_storage[index];
     }
 
     NodeIndex add(const Node& node) {
@@ -32,7 +32,7 @@ public:
     }
 
     template <typename... Args>
-    NodeIndex emplace(Args&&... args) {
+    NodeIndex emplace(Args&&...args) {
         NodeIndex new_index = static_cast<NodeIndex>(m_storage.size());
         m_storage.emplace_back(std::forward<Args>(args)...);
         return new_index;
@@ -55,7 +55,7 @@ struct GenericAst {
     }
 
     template <typename Node, typename... Args>
-    Node* emplaceNode(Args&&... args) {
+    NodeIndex *emplaceNode(Args&&...args) {
         auto& node_vector = getNodeVector<Node>();
         auto index = node_vector.emplace(std::forward<Args>(args)...);
         return node_vector.getPtr(index);
@@ -72,6 +72,8 @@ struct GenericAst {
         const auto& node_vector = getNodeVector<Node>();
         return node_vector.get(index);
     }
+
+
 
 private:
     template <typename Node>
