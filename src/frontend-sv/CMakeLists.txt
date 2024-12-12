@@ -4,8 +4,8 @@ add_library(
     ./SampleListener.cpp
     ./SurelogParser.cpp
     ./SurelogParser.hpp
-    ./Entry.cpp
-    ./Entry.hpp
+    ./SystemVerilogFrontend.cpp
+    ./SystemVerilogFrontend.hpp
 )
 
 link_directories(${CMAKE_SOURCE_DIR}/build/libraries/lib)

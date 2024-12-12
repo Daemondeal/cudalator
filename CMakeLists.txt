@@ -16,6 +16,12 @@ add_executable(
     cudalator-compiler
     src/main.cpp
 )
+
+target_include_directories(
+    cudalator-compiler
+    PRIVATE ${CMAKE_SOURCE_DIR}/build/libraries/include
+)
+
 target_include_directories(
     cudalator-compiler
     PRIVATE ${CMAKE_SOURCE_DIR}/include

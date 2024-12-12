@@ -9,5 +9,6 @@ public:
 
     void parse(const vpiHandle &handle);
     void parseModule(const vpiHandle &handle);
+    void parsePort(const vpiHandle &handle);
 };
 }

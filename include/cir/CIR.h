@@ -79,7 +79,7 @@ public:
     }
 };
 
-struct Ast : GenericAst<Signal, Process, Module> {
+struct Ast : GenericAst<Signal, Process, Module, Expr> {
     using GenericAst::GenericAst;
 };
 
