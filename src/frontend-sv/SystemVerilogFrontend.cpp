@@ -21,7 +21,7 @@ static bool run_sample_listener(const vpiHandle& design_handle) {
     SurelogParser parser;
 
     // visit and print to stdout
-    UHDM::visit_object(design_handle, std::cout);
+    // UHDM::visit_object(design_handle, std::cout);
 
     spdlog::debug("Starting the parser");
 
