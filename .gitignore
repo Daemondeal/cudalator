@@ -2,6 +2,7 @@ build/*
 slpp_all/*
 libraries/*
 compile_commands.json
+.vscode
 
 build
 slpp_all
