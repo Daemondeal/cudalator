@@ -7,6 +7,7 @@ EXE_PATH := $(COMPILER_BUILD)/$(EXE)
 
 # ROOT_DIR := $(shell pwd)
 LIB_DIR := ./build/libraries
+FULL_LIB_DIR = $(shell pwd)/build/libraries
 
 $(EXE_PATH): $(COMPILER_BUILD)/build.ninja .dummy
 	cd $(COMPILER_BUILD) && ninja
@@ -28,7 +29,7 @@ $(LIB_DIR)/.timestamp:
 
 	mkdir -p $(LIB_DIR)
 	cd ./external/Surelog/ && $(MAKE)
-	cd ./external/Surelog/ && $(MAKE) PREFIX=$(LIB_DIR) install
+	cd ./external/Surelog/ && $(MAKE) PREFIX=$(FULL_LIB_DIR) install
 	touch $(LIB_DIR)/.timestamp
 
 $(LIB_DIR)/spdlog.timestamp:
