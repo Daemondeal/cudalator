@@ -1,5 +1,6 @@
 #include "SystemVerilogFrontend.hpp"
 
+#include <cstring>
 #include <memory>
 
 #include <Surelog/API/Surelog.h>
@@ -14,6 +15,7 @@
 #include <uhdm/vpi_visitor.h>
 
 #include "SurelogParser.hpp"
+#include "uhdm/uhdm_types.h"
 
 namespace cudalator {
 
@@ -21,7 +23,16 @@ static bool run_sample_listener(const vpiHandle& design_handle) {
     SurelogParser parser;
 
     // visit and print to stdout
-    // UHDM::visit_object(design_handle, std::cout);
+    vpiHandle top_entity = vpi_handle(vpiTopModule, design_handle);
+
+    auto iterator = vpi_iterate(UHDM::uhdmtopModules, design_handle);
+
+    while (vpiHandle mod_h = vpi_scan(iterator)) {
+        auto str = vpi_get_str(vpiName, mod_h);
+
+        if (strcmp("work@simple", str) == 0)
+            UHDM::visit_object(mod_h, std::cout);
+    }
 
     spdlog::debug("Starting the parser");
 

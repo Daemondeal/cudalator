@@ -2,7 +2,9 @@ module adder (
     input logic [7:0] a,
     input logic [7:0] b,
     output logic [7:0] c,
-    output logic cout
+    output logic cout,
+
+    output logic [10:0] [0:15] test
 );
     logic [8:0] full_sum;
 

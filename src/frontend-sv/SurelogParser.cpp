@@ -1,6 +1,7 @@
 #include "SurelogParser.hpp"
 #include "uhdm/BaseClass.h"
 #include "uhdm/design.h"
+#include "uhdm/logic_net.h"
 #include "uhdm/module_inst.h"
 #include "uhdm/port.h"
 #include "uhdm/ref_obj.h"
@@ -12,41 +13,44 @@
 #include "uhdm/vpi_user.h"
 #include "uhdm/vpi_visitor.h"
 #include "utils.hpp"
+#include <cstdint>
 #include <spdlog/spdlog.h>
 
 namespace cudalator {
 SurelogParser::SurelogParser() {}
 
+#define BLACK_MAGIC(value)                                                     \
+    reinterpret_cast<UHDM_OBJECT_TYPE>(reinterpret_cast<void *>(value) - 4);
+
 static void parsePort(const UHDM::port *port) {
     spdlog::debug("Parsing Port {}", port->VpiName());
 
-    auto low_conn = dynamic_cast<const UHDM::ref_obj *>(port->Low_conn());
+    auto low_conn = port->Low_conn<UHDM::ref_obj>();
 
     if (!low_conn) {
         spdlog::error("parsePort low conn didn't found a refObject");
         exit(-1);
     }
 
-    auto test = low_conn->Actual_group();
-    spdlog::debug("Actual group is: {}", getVpiTypeName(test->VpiType()));
 
-    auto net = dynamic_cast<const UHDM::net *>(test);
-    auto ntype = net->VpiNetType();
-    spdlog::debug("Actual net type is: {} {}", ntype, getVpiTypeName(ntype));
+    auto logic_net = low_conn->Actual_group<UHDM::logic_net>();
+    if (logic_net) {
+        spdlog::debug("Logic Net Found!");
 
+        auto typespec = logic_net->Typespec();
+        if (typespec) {
+            auto act = typespec->Actual_typespec<UHDM::logic_typespec>();
+            auto rng = act->Ranges();
+            if (rng && rng->size() == 1) {
+                auto r = rng->at(0);
+                auto left = r->Left_expr()->VpiDecompile();
+                auto right = r->Right_expr()->VpiDecompile();
 
-    auto len = net->Net_bits();
-    // spdlog::debug("net bits: {}", len);
-    // for (auto bit : *net->Net_bits()) {
-    //
-    // }
+                spdlog::debug("Range: [{}:{}]", left, right);
+            }
+        }
 
-
-    // auto typ = low_conn->
-    // auto act = typ->Actual_typespec();
-
-
-    // UHDM::visit_object(typ->UhdmId(), std::cout);
+    }
 }
 
 static void parseModule(const UHDM::module_inst *module) {
@@ -73,12 +77,9 @@ void SurelogParser::parse(const vpiHandle& handle) {
 
         parseDesign(des);
         return;
-
     }
 
     auto uhandle = reinterpret_cast<const uhdm_handle *>(handle);
-
-
 
     auto obj = reinterpret_cast<const UHDM::BaseClass *>(uhandle->object);
     spdlog::debug("Test {}", obj->VpiName());
@@ -87,12 +88,10 @@ void SurelogParser::parse(const vpiHandle& handle) {
         auto modobj = dynamic_cast<const UHDM::module_inst *>(obj);
         for (auto proc : *modobj->Process()) {
             spdlog::debug("{}", proc->VpiName());
-
         }
     }
 
     spdlog::debug("typ {} obj_typ {}", obj->VpiType(), object_type);
-
 
     switch (object_type) {
     case vpiDesign: {

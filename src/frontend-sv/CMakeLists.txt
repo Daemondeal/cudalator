@@ -2,8 +2,6 @@ add_library(
     cudalator-frontend-sv
     ./utils.cpp
     ./utils.hpp
-    ./SampleListener.hpp
-    ./SampleListener.cpp
     ./SurelogParser.cpp
     ./SurelogParser.hpp
     ./SystemVerilogFrontend.cpp

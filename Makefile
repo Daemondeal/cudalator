@@ -16,12 +16,12 @@ $(EXE_PATH): $(COMPILER_BUILD)/build.ninja .dummy
 	@# Used for forcing a rebuild always
 
 run: $(EXE_PATH)
-	$(EXE_PATH) ./data/rtl/adder.sv
+	$(EXE_PATH) ./data/rtl/simple.sv
 
 
 $(COMPILER_BUILD)/build.ninja: CMakeLists.txt $(LIB_DIR)/.timestamp $(LIB_DIR)/spdlog.timestamp
 	mkdir -p build
-	cmake -B $(COMPILER_BUILD) -G Ninja
+	cmake -DCMAKE_BUILD_TYPE=Debug -B $(COMPILER_BUILD) -G Ninja
 
 $(LIB_DIR)/.timestamp:
 	@echo '### BUILDING SURELOG ###'
