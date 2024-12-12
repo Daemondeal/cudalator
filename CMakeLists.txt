@@ -10,6 +10,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 link_directories(${CMAKE_SOURCE_DIR}/build/libraries/lib)
 
+if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+    include_directories(${CMAKE_SOURCE_DIR}/external/spdlog/include)
+endif()
+
 find_package(spdlog REQUIRED)
 
 add_executable(
