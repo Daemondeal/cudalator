@@ -1,9 +1,11 @@
 #pragma once
 
 #include "GenericAst.h"
+#include <cstdint>
 #include <string>
 #include <string_view>
-#include <variant>
+#include <vector>
+
 namespace cir {
 
 struct Signal;
@@ -13,30 +15,99 @@ struct Type;
 struct Statement;
 struct Expr;
 
-// SystemVerilog types
-enum class TypeKind {
-    Wire,
-    Reg,
-    Integer,
-    Logic,
+using SignalIdx = NodeIndex<Signal>;
+using ProcessIdx = NodeIndex<Process>;
+using ModuleIdx = NodeIndex<Module>;
+using TypeIdx = NodeIndex<Type>;
+using StatementIdx = NodeIndex<Statement>;
+using ExprIdx = NodeIndex<Expr>;
+
+class Loc {
+public:
+    uint32_t line;
+    uint32_t column;
+    Loc(uint32_t line, uint32_t col) : line(line), column(col) {}
 };
 
+struct NodeBase {
+public:
+    NodeBase(std::string_view name, Loc loc) : m_name(name), m_loc(loc) {}
+    NodeBase() = delete;
+
+    const std::string_view& name() const {
+        return m_name;
+    }
+
+    Loc loc() const {
+        return m_loc;
+    }
+
+private:
+    std::string_view m_name;
+
+    Loc m_loc;
+};
+
+struct Range {
+private:
+    uint32_t left;
+    uint32_t right;
+};
+
+enum class TypeKind {
+    Bit,
+    Logic,
+    Integer,
+};
 
 struct Type {
 public:
-    TypeKind kind;
-    uint32_t size;
+    Type(TypeKind kind, Range range) : m_kind(kind), m_range(range) {}
 
-    Type(TypeKind kind, uint32_t size) : kind(kind), size(size) {}
+    Type(TypeKind kind, Range range, TypeIdx subtype)
+        : m_kind(kind), m_range(range), m_subtype(subtype) {}
+
+    TypeKind kind() const {
+        return m_kind;
+    }
+
+    Range range() const {
+        return m_range;
+    }
+
+    TypeIdx subtype() const {
+        return m_subtype;
+    }
+
+private:
+    TypeKind m_kind;
+    Range m_range;
+    TypeIdx m_subtype;
 };
 
-struct Signal {
+enum class SignalKind {
+    Internal,
+    Input,
+    Output,
+};
+
+struct Signal : NodeBase {
 public:
-    std::string_view name;
+    Signal(std::string_view name, Loc loc, TypeIdx type, SignalKind kind)
+        : NodeBase(name, loc), m_type(type), m_kind(kind) {}
 
-    Type type;
+    TypeIdx type() const {
+        return m_type;
+    }
 
-    Signal(std::string_view name, Type type) : name(name), type(type) {}
+    SignalKind kind() const {
+        return m_kind;
+    }
+
+private:
+    TypeIdx m_type;
+
+    SignalKind m_kind;
 };
 
 enum class ExprKind {
@@ -46,41 +117,106 @@ enum class ExprKind {
     Number,
 };
 
-struct Expr {
+struct Expr : NodeBase {
 public:
-    ExprKind kind;
+    Expr(std::string_view name, Loc loc, ExprKind kind, ExprIdx lhs,
+         ExprIdx rhs)
+        : NodeBase(name, loc), m_kind(kind), m_lhs(lhs), m_rhs(rhs) {}
 
-    Expr *lhs;
-    Expr *rhs;
+    Expr(std::string_view name, Loc loc, ExprKind kind, SignalIdx signal)
+        : NodeBase(name, loc), m_kind(kind), m_signal(signal) {}
 
-    Expr(ExprKind kind, Expr *lhs, Expr *rhs) : kind(kind), lhs(lhs), rhs(rhs) {}
+    Expr(std::string_view name, Loc loc, ExprKind kind, uint32_t constant)
+        : NodeBase(name, loc), m_kind(kind), m_constant(constant) {}
 
-};
-
-struct Process {
-    std::string_view name;
-
-    std::vector<Statement *> statements;
-
-    Process(std::string_view name) : name(name) {}
-};
-
-
-struct Module {
-public:
-    std::string_view name;
-
-    std::vector<Process *> processes;
-
-    Module(std::string_view name) : name(name), processes() {}
-
-    void addProcess(Process *proc) {
-        processes.push_back(proc);
+    ExprIdx lhs() const {
+        return m_lhs;
     }
+
+    ExprIdx rhs() const {
+        return m_rhs;
+    }
+
+    SignalIdx signal() const {
+        return m_signal;
+    }
+
+    uint32_t constant() const {
+        return m_constant;
+    }
+
+private:
+    ExprKind m_kind;
+
+    ExprIdx m_lhs;
+    ExprIdx m_rhs;
+
+    SignalIdx m_signal;
+    uint32_t m_constant;
 };
 
-struct Ast : GenericAst<Signal, Process, Module, Expr> {
+struct Process : NodeBase {
+public:
+    Process(std::string_view name, Loc loc) : NodeBase(name, loc) {}
+
+    const std::vector<SignalIdx>& signals() const {
+        return m_signals;
+    }
+
+    const std::vector<StatementIdx>& statements() const {
+        return m_statements;
+    }
+
+    void addSignal(SignalIdx signal) {
+        m_signals.push_back(signal);
+    }
+
+private:
+    std::vector<SignalIdx> m_signals;
+    std::vector<StatementIdx> m_statements;
+};
+
+struct Module : NodeBase {
+public:
+    Module(std::string_view name, Loc loc) : NodeBase(name, loc) {}
+
+    void addSignal(SignalIdx signal) {
+        m_signals.push_back(signal);
+    }
+
+    void addProcess(ProcessIdx proc) {
+        m_processes.push_back(proc);
+    }
+
+    const std::vector<SignalIdx>& signals() const {
+        return m_signals;
+    }
+
+    const std::vector<ProcessIdx>& processes() const {
+        return m_processes;
+    }
+
+private:
+    std::vector<SignalIdx> m_signals;
+    std::vector<ProcessIdx> m_processes;
+};
+
+struct Ast : GenericAst<Signal, Process, Module, Expr, Type> {
     using GenericAst::GenericAst;
+
+public:
+    Ast() : m_top_module() {}
+
+    const Module& getTopModule() const {
+        return getNode(m_top_module);
+    }
+
+    void setTopModule(ModuleIdx top_module) {
+        m_top_module = top_module;
+    }
+
+private:
+    ModuleIdx m_top_module;
 };
 
 } // namespace cir

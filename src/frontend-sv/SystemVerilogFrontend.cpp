@@ -42,7 +42,7 @@ static bool run_sample_listener(const vpiHandle& design_handle) {
     return true;
 }
 
-SystemVerilogFrontend::SystemVerilogFrontend() {
+SystemVerilogFrontend::SystemVerilogFrontend() : m_compiler(nullptr) {
     m_symbol_table = std::make_unique<SURELOG::SymbolTable>();
     m_errors = std::make_unique<SURELOG::ErrorContainer>(m_symbol_table.get());
     m_clp = std::make_unique<SURELOG::CommandLineParser>(
@@ -82,7 +82,8 @@ void SystemVerilogFrontend::compile_sv_to_cil(
 }
 
 SystemVerilogFrontend::~SystemVerilogFrontend() {
-    SURELOG::shutdown_compiler(m_compiler);
+    if (m_compiler != nullptr)
+        SURELOG::shutdown_compiler(m_compiler);
 }
 
 } // namespace cudalator

@@ -32,10 +32,12 @@ target_include_directories(
 )
 
 add_subdirectory(src/frontend-sv)
+add_subdirectory(src/backend)
 
 target_link_libraries(
     cudalator-compiler
     PRIVATE cudalator-frontend-sv
+    PRIVATE cudalator-backend
 )
 
 target_link_libraries(

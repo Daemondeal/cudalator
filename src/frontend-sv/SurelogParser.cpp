@@ -19,9 +19,6 @@
 namespace cudalator {
 SurelogParser::SurelogParser() {}
 
-#define BLACK_MAGIC(value)                                                     \
-    reinterpret_cast<UHDM_OBJECT_TYPE>(reinterpret_cast<void *>(value) - 4);
-
 static void parsePort(const UHDM::port *port) {
     spdlog::debug("Parsing Port {}", port->VpiName());
 
