@@ -15,6 +15,8 @@
 #include <uhdm/vpi_visitor.h>
 
 #include "SurelogParser.hpp"
+#include "SurelogTranslator.hpp"
+#include "uhdm/module_inst.h"
 #include "uhdm/uhdm_types.h"
 
 namespace cudalator {
@@ -49,8 +51,8 @@ SystemVerilogFrontend::SystemVerilogFrontend() : m_compiler(nullptr) {
         m_errors.get(), m_symbol_table.get(), false, false);
 }
 
-void SystemVerilogFrontend::compile_sv_to_cil(
-    std::vector<std::string> sources) {
+std::unique_ptr<cir::Ast>
+SystemVerilogFrontend::compileSvToCir(std::vector<std::string> sources) {
     // Set parameters
     m_clp->noPython();
     m_clp->setMuteStdout();
@@ -73,12 +75,31 @@ void SystemVerilogFrontend::compile_sv_to_cil(
     vpi_design = SURELOG::get_uhdm_design(m_compiler);
 
     if (vpi_design == nullptr)
-        return;
+        return nullptr;
 
     // Go to the next step
-    auto success = run_sample_listener(vpi_design);
+    return translateAst(vpi_design);
+}
 
-    return;
+std::unique_ptr<cir::Ast>
+SystemVerilogFrontend::translateAst(vpiHandle design_h) {
+    auto iter = vpi_iterate(UHDM::uhdmtopModules, design_h);
+    auto ast = std::make_unique<cir::Ast>();
+    SurelogTranslator translator(*ast); 
+
+    while (vpiHandle mod_h = vpi_scan(iter)) {
+        auto mod_name = vpi_get_str(vpiName, mod_h);
+
+        auto handle = reinterpret_cast<const uhdm_handle *>(mod_h);
+        auto mod_handle = reinterpret_cast<const UHDM::module_inst *>(handle->object);
+
+        spdlog::debug("Translating module {}", mod_name);
+
+        auto mod_idx = translator.parseModule(*mod_handle);
+        ast->setTopModule(mod_idx);
+    }
+
+    return ast;
 }
 
 SystemVerilogFrontend::~SystemVerilogFrontend() {

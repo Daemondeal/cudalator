@@ -85,29 +85,30 @@ private:
     TypeIdx m_subtype;
 };
 
-enum class SignalKind {
+enum class SignalDirection {
     Internal,
     Input,
     Output,
+    Inout,
 };
 
 struct Signal : NodeBase {
 public:
-    Signal(std::string_view name, Loc loc, TypeIdx type, SignalKind kind)
+    Signal(std::string_view name, Loc loc, TypeIdx type, SignalDirection kind)
         : NodeBase(name, loc), m_type(type), m_kind(kind) {}
 
     TypeIdx type() const {
         return m_type;
     }
 
-    SignalKind kind() const {
+    SignalDirection kind() const {
         return m_kind;
     }
 
 private:
     TypeIdx m_type;
 
-    SignalKind m_kind;
+    SignalDirection m_kind;
 };
 
 enum class ExprKind {

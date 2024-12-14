@@ -1,13 +1,14 @@
 #include "CirPrinter.hpp"
 
 #include <iostream>
+#include <spdlog/spdlog.h>
 
 namespace cudalator {
 CirPrinter::CirPrinter() : m_indent(0) {}
 CirPrinter::~CirPrinter() {}
 
 void CirPrinter::printAst(cir::Ast& ast) {
-    std::cout << "Printing ast\n";
+    spdlog::info("Printing AST");
 
     printModule(ast, ast.getTopModule());
 }
@@ -17,13 +18,13 @@ void CirPrinter::printModule(cir::Ast& ast, const cir::Module& module) {
 
     m_indent++;
     for (auto signal_idx : module.signals()) {
-        auto &signal = ast.getNode(signal_idx);
+        auto& signal = ast.getNode(signal_idx);
 
         printSignal(ast, signal);
     }
 
     for (auto process_idx : module.processes()) {
-        auto &process = ast.getNode(process_idx);
+        auto& process = ast.getNode(process_idx);
         printProcess(ast, process);
     }
 
@@ -39,16 +40,14 @@ void CirPrinter::printProcess(cir::Ast& ast, const cir::Process& process) {
     printIndent();
     std::cout << "(sensitive";
     for (auto signal_idx : process.signals()) {
-        auto &signal = ast.getNode(signal_idx);
+        auto& signal = ast.getNode(signal_idx);
         std::cout << " " << signal.name();
     }
     std::cout << ")\n";
 
-
     m_indent--;
     printIndent();
     std::cout << ")\n";
-
 }
 
 void CirPrinter::printStatement(cir::Ast& ast,
@@ -62,13 +61,16 @@ void CirPrinter::printSignal(cir::Ast& ast, const cir::Signal& signal) {
     std::cout << "(signal ";
 
     switch (signal.kind()) {
-    case cir::SignalKind::Internal: {
+    case cir::SignalDirection::Internal: {
         std::cout << "internal ";
     } break;
-    case cir::SignalKind::Input: {
+    case cir::SignalDirection::Input: {
         std::cout << "input ";
     } break;
-    case cir::SignalKind::Output: {
+    case cir::SignalDirection::Output: {
+        std::cout << "output ";
+    } break;
+    case cir::SignalDirection::Inout: {
         std::cout << "output ";
     } break;
     }
