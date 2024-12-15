@@ -1,10 +1,10 @@
 #pragma once
 
+#include <assert.h>
 #include <cstdint>
 #include <tuple>
 #include <utility>
 #include <vector>
-#include <assert.h>
 
 namespace cir {
 
@@ -14,7 +14,11 @@ struct NodeIndex {
     uint32_t idx : 31;
 
     NodeIndex() : valid(0), idx(0) {}
-    NodeIndex(uint32_t idx) : valid(1), idx(idx) {}
+    explicit NodeIndex(uint32_t idx) : valid(1), idx(idx) {}
+
+    inline static NodeIndex null() {
+        return {};
+    }
 
     inline bool isValid() const {
         return valid == 1;

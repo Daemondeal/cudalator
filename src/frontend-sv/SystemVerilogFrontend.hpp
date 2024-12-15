@@ -20,7 +20,7 @@ public:
     ~SystemVerilogFrontend();
 
     std::unique_ptr<cir::Ast>
-    compileSvToCir(std::vector<std::string> sources);
+    compileSvToCir(std::vector<std::string> sources, bool print_uhdm_ast);
 
 private:
 

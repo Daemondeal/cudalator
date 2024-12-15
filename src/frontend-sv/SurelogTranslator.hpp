@@ -1,6 +1,9 @@
 #pragma once
 
 #include "cir/CIR.h"
+#include "uhdm/cont_assign.h"
+#include "uhdm/ref_typespec.h"
+#include <string_view>
 #include <uhdm/uhdm.h>
 
 namespace cudalator {
@@ -11,6 +14,12 @@ public:
     cir::ModuleIdx parseModule(const UHDM::module_inst &module);
 
     cir::SignalIdx parsePort(const UHDM::port &port);
+
+    cir::ProcessIdx parseProcess(const UHDM::process_stmt &proc);
+
+    cir::ProcessIdx parseContinuousAssignment(const UHDM::cont_assign &assign);
+
+    cir::TypeIdx parseTypespec(const UHDM::ref_typespec &typespec, std::string_view signal_name);
 
 private:
     cir::Ast& m_ast;

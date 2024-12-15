@@ -18,7 +18,7 @@ std::unique_ptr<cir::Ast> generateTestAst() {
 
     auto& top = ast->getNode(top_idx);
 
-    auto sig_idx = ast->emplaceNode<cir::Signal>(vw, zero_loc, 0, cir::SignalDirection::Input);
+    auto sig_idx = ast->emplaceNode<cir::Signal>(vw, zero_loc, cir::TypeIdx::null(), cir::SignalDirection::Input);
     top.addSignal(sig_idx);
 
     auto proc_idx = ast->emplaceNode<cir::Process>(vw, zero_loc);
@@ -45,7 +45,7 @@ int main(int argc, const char **argv) {
 
     cudalator::SystemVerilogFrontend frontend;
 
-    auto ast = frontend.compileSvToCir({source_path});
+    auto ast = frontend.compileSvToCir({source_path}, true);
 
     if (!ast) {
         spdlog::error("Error while compiling \"{}\".", source_path);

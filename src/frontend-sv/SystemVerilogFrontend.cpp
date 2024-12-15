@@ -7,6 +7,7 @@
 #include <Surelog/CommandLine/CommandLineParser.h>
 #include <Surelog/ErrorReporting/ErrorContainer.h>
 #include <Surelog/SourceCompile/SymbolTable.h>
+#include <spdlog/common.h>
 #include <spdlog/spdlog.h>
 #include <uhdm/ElaboratorListener.h>
 #include <uhdm/VpiListener.h>
@@ -52,7 +53,7 @@ SystemVerilogFrontend::SystemVerilogFrontend() : m_compiler(nullptr) {
 }
 
 std::unique_ptr<cir::Ast>
-SystemVerilogFrontend::compileSvToCir(std::vector<std::string> sources) {
+SystemVerilogFrontend::compileSvToCir(std::vector<std::string> sources, bool print_udhm_ast) {
     // Set parameters
     m_clp->noPython();
     m_clp->setMuteStdout();
@@ -76,6 +77,11 @@ SystemVerilogFrontend::compileSvToCir(std::vector<std::string> sources) {
 
     if (vpi_design == nullptr)
         return nullptr;
+
+    if (print_udhm_ast) {
+        spdlog::info("Printing udhm ast:");
+        UHDM::visit_object(vpi_design, std::cout);
+    }
 
     // Go to the next step
     return translateAst(vpi_design);
