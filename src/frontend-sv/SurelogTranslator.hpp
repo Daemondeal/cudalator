@@ -3,6 +3,7 @@
 #include "cir/CIR.h"
 #include "uhdm/cont_assign.h"
 #include "uhdm/ref_typespec.h"
+#include "uhdm/variables.h"
 #include <string_view>
 #include <uhdm/uhdm.h>
 
@@ -14,6 +15,8 @@ public:
     cir::ModuleIdx parseModule(const UHDM::module_inst &module);
 
     cir::SignalIdx parsePort(const UHDM::port &port);
+
+    cir::SignalIdx parseVariable(const UHDM::variables &variable);
 
     cir::ProcessIdx parseProcess(const UHDM::process_stmt &proc);
 

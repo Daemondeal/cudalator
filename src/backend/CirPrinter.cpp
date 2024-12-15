@@ -75,6 +75,24 @@ void CirPrinter::printSignal(cir::Ast& ast, const cir::Signal& signal) {
     } break;
     }
 
+    auto type_idx = signal.type();
+
+    if (type_idx.isValid()) {
+        auto kind = ast.getNode(type_idx).kind();
+
+        switch (kind) {
+        case cir::TypeKind::Logic: {
+            std::cout << "logic ";
+        } break;
+        case cir::TypeKind::Bit: {
+            std::cout << "bit ";
+        } break;
+        case cir::TypeKind::Integer: {
+            std::cout << "integer ";
+        } break;
+        }
+    }
+
     // TODO: Print Type
     std::cout << signal.name() << ")\n";
 }
