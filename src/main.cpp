@@ -1,3 +1,4 @@
+#include "Exceptions.hpp"
 #include "backend/CirPrinter.hpp"
 #include "frontend-sv/SystemVerilogFrontend.hpp"
 
@@ -6,6 +7,7 @@
 #include <spdlog/spdlog.h>
 
 #include <iostream>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -18,7 +20,8 @@ std::unique_ptr<cir::Ast> generateTestAst() {
 
     auto& top = ast->getNode(top_idx);
 
-    auto sig_idx = ast->emplaceNode<cir::Signal>(vw, zero_loc, cir::TypeIdx::null(), cir::SignalDirection::Input);
+    auto sig_idx = ast->emplaceNode<cir::Signal>(
+        vw, zero_loc, cir::TypeIdx::null(), cir::SignalDirection::Input);
     top.addSignal(sig_idx);
 
     auto proc_idx = ast->emplaceNode<cir::Process>(vw, zero_loc);
@@ -45,17 +48,32 @@ int main(int argc, const char **argv) {
 
     cudalator::SystemVerilogFrontend frontend;
 
-    auto ast = frontend.compileSvToCir({source_path}, true);
+    try {
+        auto ast = frontend.compileSvToCir({source_path}, true);
 
-    if (!ast) {
-        spdlog::error("Error while compiling \"{}\".", source_path);
+        if (!ast) {
+            spdlog::error("Error while compiling \"{}\".", source_path);
+            return -1;
+        }
+
+        cudalator::CirPrinter printer;
+        printer.printAst(*ast);
+
+    } catch (cudalator::UnsupportedException error) {
+        auto loc = error.loc();
+        spdlog::error("[{}:{}] Unsupported: {}", loc.line, loc.column, error.what());
+        return -1;
+    } catch (cudalator::UnimplementedException error) {
+        auto loc = error.loc();
+        spdlog::error("[{}:{}] Unimplemented: {}", loc.line, loc.column, error.what());
+        return -1;
+    } catch (cudalator::CompilerException error) {
+        auto loc = error.loc();
+        spdlog::error("[{}:{}] {}", loc.line, loc.column, error.what());
         return -1;
     }
 
     // auto ast = generateTestAst();
-
-    cudalator::CirPrinter printer;
-    printer.printAst(*ast);
 
     return 0;
 }

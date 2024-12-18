@@ -2,6 +2,7 @@
 
 #include <assert.h>
 #include <cstdint>
+#include <string_view>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -45,6 +46,15 @@ public:
         return new_index;
     }
 
+    bool existsWithName(std::string_view name) {
+        for (auto &item : m_storage) {
+            if (item.name() == name) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     template <typename... Args>
     NodeIndex<Node> emplace(Args&&...args) {
         NodeIndex<Node> new_index(m_storage.size());
@@ -61,6 +71,12 @@ struct GenericAst {
     std::tuple<NodeVector<Nodes>...> nodes;
 
     GenericAst() : nodes() {}
+
+    template <typename Node>
+    bool existsWithName(std::string_view name) {
+        auto& node_vector = getNodeVector<Node>();
+        return node_vector.existsWithName(name);
+    }
 
     template <typename Node>
     NodeIndex<Node> addNode(const Node& node) {

@@ -16,6 +16,8 @@ public:
 
     cir::SignalIdx parsePort(const UHDM::port &port);
 
+    cir::SignalIdx parseNet(const UHDM::net &net);
+
     cir::SignalIdx parseVariable(const UHDM::variables &variable);
 
     cir::ProcessIdx parseProcess(const UHDM::process_stmt &proc);

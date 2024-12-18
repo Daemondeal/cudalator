@@ -49,9 +49,20 @@ private:
 };
 
 struct Range {
+public:
+    explicit Range(uint32_t left, uint32_t right)
+        : m_left(left), m_right(right) {}
+
+    uint32_t left() {
+        return m_left;
+    }
+    uint32_t right() {
+        return m_right;
+    }
+
 private:
-    uint32_t left;
-    uint32_t right;
+    uint32_t m_left;
+    uint32_t m_right;
 };
 
 enum class TypeKind {
@@ -64,8 +75,7 @@ struct Type {
 public:
     Type(TypeKind kind) : m_kind(kind) {}
 
-    Type(TypeKind kind, TypeIdx subtype)
-        : m_kind(kind), m_subtype(subtype) {}
+    Type(TypeKind kind, TypeIdx subtype) : m_kind(kind), m_subtype(subtype) {}
 
     void addRange(Range range) {
         m_ranges.push_back(range);
@@ -79,7 +89,7 @@ public:
         return m_ranges[0];
     }
 
-    const std::vector<Range> &ranges() const {
+    const std::vector<Range>& ranges() const {
         return m_ranges;
     }
 
@@ -102,7 +112,8 @@ enum class SignalDirection {
 
 struct Signal : NodeBase {
 public:
-    explicit Signal(std::string_view name, Loc loc, TypeIdx type, SignalDirection kind)
+    explicit Signal(std::string_view name, Loc loc, TypeIdx type,
+                    SignalDirection kind)
         : NodeBase(name, loc), m_type(type), m_kind(kind) {}
 
     TypeIdx type() const {
