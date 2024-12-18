@@ -1,9 +1,7 @@
 module simple (
     input logic clk,
     input logic rst,
-    output reg [7:0] value,
-
-    output reg [32'h7F:-15] value2
+    output reg [7:0] value
 );
 
 wire u;

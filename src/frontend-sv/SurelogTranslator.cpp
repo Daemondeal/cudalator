@@ -176,33 +176,35 @@ SurelogTranslator::parseTypespec(const UHDM::ref_typespec& typespec,
     }
 
     auto type_idx = m_ast.addNode<cir::Type>(kind);
-    auto type = m_ast.getNode(type_idx);
+    auto& type = m_ast.getNode(type_idx);
 
     // Ranges
 
-    auto addRangeIfExists = [&type, &loc](const UHDM::VectorOfrange *ranges) {
+    auto addRangeIfExists = [&](const UHDM::VectorOfrange *ranges) {
         if (!ranges) {
             return;
-            for (auto range : *ranges) {
-                auto lhs = range->Left_expr<UHDM::constant>();
-                if (!lhs) {
-                    throw UnimplementedException(
-                        "Non constant ranges are not supported yet", loc);
-                }
-
-                auto rhs = range->Right_expr<UHDM::constant>();
-                if (!rhs) {
-                    throw UnimplementedException(
-                        "Non constant ranges are not supported yet", loc);
-                }
-
-                auto lhs_val = evaluateConstant(lhs->VpiValue(), loc);
-                auto rhs_val = evaluateConstant(rhs->VpiValue(), loc);
-
-                auto ast_range = cir::Range(lhs_val, rhs_val);
-
-                type.addRange(ast_range);
+        }
+        for (auto range : *ranges) {
+            auto lhs = range->Left_expr<UHDM::constant>();
+            if (!lhs) {
+                throw UnimplementedException(
+                    "Non constant ranges are not supported yet", loc);
             }
+
+            auto rhs = range->Right_expr<UHDM::constant>();
+            if (!rhs) {
+                throw UnimplementedException(
+                    "Non constant ranges are not supported yet", loc);
+            }
+
+            auto lhs_val = evaluateConstant(lhs->VpiValue(), loc);
+            auto rhs_val = evaluateConstant(rhs->VpiValue(), loc);
+
+            auto ast_range = cir::Range(lhs_val, rhs_val);
+
+            spdlog::debug("Adding range [{}:{}] to {}", lhs_val, rhs_val,
+                          signal_name);
+            type.addRange(ast_range);
         }
     };
 
