@@ -14,6 +14,7 @@ struct Module;
 struct Type;
 struct Statement;
 struct Expr;
+struct Constant;
 
 using SignalIdx = NodeIndex<Signal>;
 using ProcessIdx = NodeIndex<Process>;
@@ -21,6 +22,7 @@ using ModuleIdx = NodeIndex<Module>;
 using TypeIdx = NodeIndex<Type>;
 using StatementIdx = NodeIndex<Statement>;
 using ExprIdx = NodeIndex<Expr>;
+using ConstantIdx = NodeIndex<Constant>;
 
 class Loc {
 public:
@@ -112,10 +114,14 @@ enum class SignalDirection {
 
 struct Signal : NodeBase {
 public:
-    explicit Signal(std::string_view name, Loc loc, TypeIdx type,
-                    SignalDirection kind)
-        : NodeBase(name, loc), m_type(type), m_kind(kind) {}
+    explicit Signal(std::string_view name, Loc loc, std::string_view full_name,
+                    TypeIdx type, SignalDirection kind)
+        : NodeBase(name, loc), m_full_name(full_name), m_type(type),
+          m_kind(kind) {}
 
+    std::string_view fullName() {
+        return m_full_name;
+    }
     TypeIdx type() const {
         return m_type;
     }
@@ -127,27 +133,125 @@ public:
 private:
     TypeIdx m_type;
 
+    std::string_view m_full_name;
     SignalDirection m_kind;
 };
 
+struct Constant : NodeBase {
+public:
+    Constant(std::string_view name, Loc loc, uint32_t size)
+        : NodeBase(name, loc), m_size(size) {}
+    Constant(std::string_view name, Loc loc, uint32_t size, uint64_t value)
+        : NodeBase(name, loc), m_size(size), m_value({value}) {}
+
+    // TODO: There has to be a better way to do this
+    void addValue(uint32_t val) {
+        m_value.push_back(val);
+    }
+
+    // TODO: This is bad
+    uint64_t value() {
+        return m_value[0];
+    }
+
+private:
+    uint32_t m_size;
+    std::vector<uint64_t> m_value;
+};
+
 enum class ExprKind {
-    Binary,
-    Unary,
+    Constant,
+
+    // exprs[0]: lhs, exprs[1]: rhs
+    Addition,
+
+    // exprs[0]: lhs, exprs[1]: rhs, signal: target
+    PartSelect,
+    // exprs[0]: bit number, signal: target
+    BitSelect,
+    // signal: target
     SignalRef,
-    Number,
+
 };
 
 struct Expr : NodeBase {
 public:
     Expr(std::string_view name, Loc loc, ExprKind kind, ExprIdx lhs,
          ExprIdx rhs)
-        : NodeBase(name, loc), m_kind(kind), m_lhs(lhs), m_rhs(rhs) {}
+        : NodeBase(name, loc), m_kind(kind), m_exprs({lhs, rhs}) {}
+
+    Expr(std::string_view name, Loc loc, ExprKind kind, ExprIdx lhs,
+         ExprIdx rhs, SignalIdx signal)
+        : NodeBase(name, loc), m_kind(kind), m_exprs({lhs, rhs}),
+          m_signal(signal) {}
 
     Expr(std::string_view name, Loc loc, ExprKind kind, SignalIdx signal)
         : NodeBase(name, loc), m_kind(kind), m_signal(signal) {}
 
-    Expr(std::string_view name, Loc loc, ExprKind kind, uint32_t constant)
+    Expr(std::string_view name, Loc loc, ExprKind kind, ConstantIdx constant)
         : NodeBase(name, loc), m_kind(kind), m_constant(constant) {}
+
+    Expr(std::string_view name, Loc loc, ExprKind kind)
+        : NodeBase(name, loc), m_kind(kind) {}
+
+    ExprIdx lhs() const {
+        return m_exprs[0];
+    }
+
+    ExprIdx rhs() const {
+        return m_exprs[1];
+    }
+
+    ExprKind kind() const {
+        return m_kind;
+    }
+
+    SignalIdx signal() const {
+        return m_signal;
+    }
+
+    ConstantIdx constant() const {
+        return m_constant;
+    }
+
+    ExprIdx expr(int idx) const {
+        return m_exprs[idx];
+    }
+
+    const std::vector<ExprIdx>& exprs() const {
+        return m_exprs;
+    }
+
+    void addExpr(ExprIdx expr) {
+        m_exprs.push_back(expr);
+    }
+
+private:
+    ExprKind m_kind;
+
+    std::vector<ExprIdx> m_exprs;
+
+    ConstantIdx m_constant;
+
+    SignalIdx m_signal;
+};
+
+enum class StatementKind {
+    Assignment,
+};
+
+struct Statement : NodeBase {
+public:
+    Statement(std::string_view name, Loc loc, StatementKind kind)
+        : NodeBase(name, loc), m_kind(kind) {}
+
+    Statement(std::string_view name, Loc loc, StatementKind kind, ExprIdx lhs,
+              ExprIdx rhs)
+        : NodeBase(name, loc), m_kind(kind), m_lhs(lhs), m_rhs(rhs) {}
+
+    StatementKind kind() const {
+        return m_kind;
+    }
 
     ExprIdx lhs() const {
         return m_lhs;
@@ -157,43 +261,53 @@ public:
         return m_rhs;
     }
 
-    SignalIdx signal() const {
-        return m_signal;
-    }
-
-    uint32_t constant() const {
-        return m_constant;
-    }
-
-private:
-    ExprKind m_kind;
-
-    ExprIdx m_lhs;
-    ExprIdx m_rhs;
-
-    SignalIdx m_signal;
-    uint32_t m_constant;
-};
-
-struct Process : NodeBase {
-public:
-    Process(std::string_view name, Loc loc) : NodeBase(name, loc) {}
-
-    const std::vector<SignalIdx>& signals() const {
-        return m_signals;
-    }
-
     const std::vector<StatementIdx>& statements() const {
         return m_statements;
     }
 
-    void addSignal(SignalIdx signal) {
-        m_signals.push_back(signal);
+    void addStatement(StatementIdx statement) {
+        m_statements.push_back(statement);
     }
 
 private:
-    std::vector<SignalIdx> m_signals;
+    StatementKind m_kind;
+
+    ExprIdx m_lhs;
+    ExprIdx m_rhs;
+
     std::vector<StatementIdx> m_statements;
+};
+
+struct Process : NodeBase {
+public:
+    Process(std::string_view name, Loc loc, StatementIdx statement)
+        : NodeBase(name, loc), m_statement(statement) {}
+
+    const std::vector<SignalIdx>& sensitivityList() const {
+        return m_sensitivity_list;
+    }
+
+    StatementIdx statement() const {
+        return m_statement;
+    }
+
+    void addToSensitivityList(SignalIdx signal) {
+        m_sensitivity_list.push_back(signal);
+    }
+
+    void setShouldPopulateSensitivityList(bool val) {
+        m_should_populate_sensitivity_list = val;
+    }
+
+    bool shouldPopulateSensitivityList() const {
+        return m_should_populate_sensitivity_list;
+    }
+
+private:
+    std::vector<SignalIdx> m_sensitivity_list;
+    StatementIdx m_statement;
+
+    bool m_should_populate_sensitivity_list = false;
 };
 
 struct Module : NodeBase {
@@ -221,7 +335,8 @@ private:
     std::vector<ProcessIdx> m_processes;
 };
 
-struct Ast : GenericAst<Signal, Process, Module, Expr, Type> {
+struct Ast
+    : GenericAst<Signal, Process, Module, Expr, Statement, Type, Constant> {
     using GenericAst::GenericAst;
 
 public:
@@ -233,6 +348,11 @@ public:
 
     void setTopModule(ModuleIdx top_module) {
         m_top_module = top_module;
+    }
+
+    SignalIdx findSignal(std::string_view full_name) {
+        auto signal_vec = getNodeVector<Signal>();
+        return signal_vec.findByFullName(full_name);
     }
 
 private:

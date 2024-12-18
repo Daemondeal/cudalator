@@ -1,4 +1,5 @@
 #include "Exceptions.hpp"
+#include "backend/Backend.hpp"
 #include "backend/CirPrinter.hpp"
 #include "frontend-sv/SystemVerilogFrontend.hpp"
 
@@ -10,29 +11,6 @@
 #include <string>
 #include <string_view>
 #include <vector>
-
-std::unique_ptr<cir::Ast> generateTestAst() {
-    auto ast = std::make_unique<cir::Ast>();
-    cir::Loc zero_loc(0, 0);
-    std::string_view vw("test");
-
-    auto top_idx = ast->emplaceNode<cir::Module>(vw, zero_loc);
-
-    auto& top = ast->getNode(top_idx);
-
-    auto sig_idx = ast->emplaceNode<cir::Signal>(
-        vw, zero_loc, cir::TypeIdx::null(), cir::SignalDirection::Input);
-    top.addSignal(sig_idx);
-
-    auto proc_idx = ast->emplaceNode<cir::Process>(vw, zero_loc);
-    auto& proc = ast->getNode(proc_idx);
-    proc.addSignal(sig_idx);
-    top.addProcess(proc_idx);
-
-    ast->setTopModule(top_idx);
-
-    return ast;
-}
 
 int main(int argc, const char **argv) {
     if (argc != 2) {
@@ -56,20 +34,20 @@ int main(int argc, const char **argv) {
             return -1;
         }
 
-        cudalator::CirPrinter printer;
-        printer.printAst(*ast);
-
+        cudalator::run_backend(std::move(ast), true);
     } catch (cudalator::UnsupportedException error) {
         auto loc = error.loc();
-        spdlog::error("[{}:{}] Unsupported: {}", loc.line, loc.column, error.what());
+        spdlog::error("(line {}: col {}) Unsupported: {}", loc.line, loc.column,
+                      error.what());
         return -1;
     } catch (cudalator::UnimplementedException error) {
         auto loc = error.loc();
-        spdlog::error("[{}:{}] Unimplemented: {}", loc.line, loc.column, error.what());
+        spdlog::error("[line {}: col {}] Unimplemented: {}", loc.line, loc.column,
+                      error.what());
         return -1;
     } catch (cudalator::CompilerException error) {
         auto loc = error.loc();
-        spdlog::error("[{}:{}] {}", loc.line, loc.column, error.what());
+        spdlog::error("(line {}:col {}) {}", loc.line, loc.column, error.what());
         return -1;
     }
 

@@ -5,12 +5,15 @@
 
 #include "cir/CIR.h"
 #include "uhdm/BaseClass.h"
+#include "uhdm/bit_select.h"
 #include "uhdm/bit_typespec.h"
 #include "uhdm/constant.h"
 #include "uhdm/cont_assign.h"
 #include "uhdm/containers.h"
 #include "uhdm/integer_typespec.h"
 #include "uhdm/logic_typespec.h"
+#include "uhdm/part_select.h"
+#include "uhdm/ref_obj.h"
 #include "uhdm/vpi_user.h"
 #include <charconv>
 #include <spdlog/spdlog.h>
@@ -56,12 +59,13 @@ cir::SignalIdx SurelogTranslator::parsePort(const UHDM::port& port) {
 
     auto net = low_conn->Actual_group<UHDM::net>();
     CD_ASSERT_MSG(!!net, "Port has no associated low_conn net.");
+    auto full_name = net->VpiFullName();
 
     auto typespec = net->Typespec();
     CD_ASSERT_MSG(!!net, "Port has no associated low_conn net typespec.");
     auto typ = parseTypespec(*typespec, name);
 
-    return m_ast.emplaceNode<cir::Signal>(name, loc, typ, kind);
+    return m_ast.emplaceNode<cir::Signal>(name, loc, full_name, typ, kind);
 }
 
 cir::ModuleIdx SurelogTranslator::parseModule(const UHDM::module_inst& module) {
@@ -71,10 +75,12 @@ cir::ModuleIdx SurelogTranslator::parseModule(const UHDM::module_inst& module) {
     auto mod_idx = m_ast.emplaceNode<cir::Module>(name, loc);
     auto& ast_mod = m_ast.getNode(mod_idx);
 
-    for (auto port : *module.Ports()) {
-        auto port_idx = parsePort(*port);
-        if (port_idx.isValid()) {
-            ast_mod.addSignal(port_idx);
+    if (module.Ports()) {
+        for (auto port : *module.Ports()) {
+            auto port_idx = parsePort(*port);
+            if (port_idx.isValid()) {
+                ast_mod.addSignal(port_idx);
+            }
         }
     }
 
@@ -107,7 +113,6 @@ cir::ModuleIdx SurelogTranslator::parseModule(const UHDM::module_inst& module) {
             auto proc_idx = parseContinuousAssignment(*assign);
 
             if (proc_idx.isValid()) {
-                spdlog::debug("Valid Proc");
                 ast_mod.addProcess(proc_idx);
             }
         }
@@ -223,6 +228,122 @@ SurelogTranslator::parseTypespec(const UHDM::ref_typespec& typespec,
 
 cir::ProcessIdx
 SurelogTranslator::parseContinuousAssignment(const UHDM::cont_assign& assign) {
+    CD_ASSERT_NONNULL(assign.Lhs());
+    CD_ASSERT_NONNULL(assign.Rhs());
+
+    auto lhs_idx = parseExpr(*assign.Lhs());
+    auto rhs_idx = parseExpr(*assign.Rhs());
+
+    auto name = assign.VpiName();
+    auto loc = getLocFromVpi(assign);
+
+    auto assignment_idx = m_ast.emplaceNode<cir::Statement>(
+        name, loc, cir::StatementKind::Assignment, lhs_idx, rhs_idx);
+
+    // TODO: Maybe handle the sensitivity list
+    auto proc_idx = m_ast.emplaceNode<cir::Process>(name, loc, assignment_idx);
+
+    auto &proc = m_ast.getNode(proc_idx);
+    proc.setShouldPopulateSensitivityList(true);
+
+
+    return proc_idx;
+}
+
+cir::SignalIdx SurelogTranslator::getSignalFromRef(const UHDM::ref_obj& ref) {
+    std::string_view full_name;
+    if (auto net = ref.Actual_group<UHDM::net>()) {
+        full_name = net->VpiFullName();
+    } else if (auto var = ref.Actual_group<UHDM::variables>()) {
+        full_name = var->VpiFullName();
+    } else {
+        CD_UNREACHABLE("Reference is neither a net nor a variable");
+    }
+
+    auto ast_signal = m_ast.findSignal(full_name);
+    CD_ASSERT(ast_signal.isValid());
+    return ast_signal;
+}
+
+cir::ExprIdx SurelogTranslator::parseExpr(const UHDM::expr& expr) {
+    auto name = expr.VpiName();
+    auto loc = getLocFromVpi(expr);
+
+    if (auto constant = dynamic_cast<const UHDM::constant *>(&expr)) {
+        auto val = expr.VpiValue();
+        // TODO: This should be able to handle bigger constants
+        auto int_val = evaluateConstant(val, loc);
+        auto size = static_cast<uint32_t>(constant->VpiSize());
+
+        auto ast_const =
+            m_ast.emplaceNode<cir::Constant>(val, loc, size, int_val);
+        if (size > 64) {
+            throw UnimplementedException(
+                "cannot handle constants bigger than 64 bits (for now)", loc);
+        }
+
+        return m_ast.emplaceNode<cir::Expr>(name, loc, cir::ExprKind::Constant,
+                                            ast_const);
+    } else if (auto op = dynamic_cast<const UHDM::operation *>(&expr)) {
+        auto operands = op->Operands();
+
+        switch (op->VpiOpType()) {
+        case vpiAddOp: {
+            CD_ASSERT_NONNULL(operands);
+
+            auto lhs = dynamic_cast<UHDM::expr *>(operands->at(0));
+            auto rhs = dynamic_cast<UHDM::expr *>(operands->at(1));
+
+            CD_ASSERT_NONNULL(lhs);
+            CD_ASSERT_NONNULL(rhs);
+
+            auto ast_lhs = parseExpr(*lhs);
+            auto ast_rhs = parseExpr(*rhs);
+
+            return m_ast.emplaceNode<cir::Expr>(
+                name, loc, cir::ExprKind::Addition, ast_lhs, ast_rhs);
+
+        } break;
+        default: {
+            throw UnimplementedException(
+                string_format("operation type %d", op->VpiOpType()), loc);
+        } break;
+        }
+
+    } else if (auto part_sel = dynamic_cast<const UHDM::part_select *>(&expr)) {
+        // NOTE: Part selects are a subclass of ref_objs, so check for these
+        // before checking those
+        CD_ASSERT_NONNULL(part_sel->Left_range());
+        CD_ASSERT_NONNULL(part_sel->Right_range());
+
+        auto lhs = parseExpr(*part_sel->Left_range());
+        auto rhs = parseExpr(*part_sel->Right_range());
+
+        auto ast_signal = getSignalFromRef(*part_sel);
+        return m_ast.emplaceNode<cir::Expr>(
+            name, loc, cir::ExprKind::PartSelect, lhs, rhs, ast_signal);
+    } else if (auto bit_sel = dynamic_cast<const UHDM::bit_select *>(&expr)) {
+        CD_ASSERT_NONNULL(bit_sel->VpiIndex());
+
+        auto index = parseExpr(*bit_sel->VpiIndex());
+        auto ast_signal = getSignalFromRef(*bit_sel);
+
+        auto expr_idx = m_ast.emplaceNode<cir::Expr>(
+            name, loc, cir::ExprKind::BitSelect, ast_signal);
+
+        auto& ast_expr = m_ast.getNode(expr_idx);
+        ast_expr.addExpr(index);
+
+        return expr_idx;
+    } else if (auto ref_obj = dynamic_cast<const UHDM::ref_obj *>(&expr)) {
+        auto ast_signal = getSignalFromRef(*ref_obj);
+
+        return m_ast.emplaceNode<cir::Expr>(name, loc, cir::ExprKind::SignalRef,
+                                            ast_signal);
+
+    } else {
+        throw UnimplementedException("expression type", loc);
+    }
 
     return {};
 }
@@ -230,6 +351,7 @@ SurelogTranslator::parseContinuousAssignment(const UHDM::cont_assign& assign) {
 cir::SignalIdx SurelogTranslator::parseNet(const UHDM::net& net) {
     auto name = net.VpiName();
     auto loc = getLocFromVpi(net);
+    auto full_name = net.VpiFullName();
 
     // Hopefully this always exists
     auto type_ref = net.Typespec();
@@ -242,7 +364,7 @@ cir::SignalIdx SurelogTranslator::parseNet(const UHDM::net& net) {
     auto typ = parseTypespec(*type_ref, name);
 
     auto signal_idx = m_ast.emplaceNode<cir::Signal>(
-        name, loc, typ, cir::SignalDirection::Internal);
+        name, loc, full_name, typ, cir::SignalDirection::Internal);
 
     return signal_idx;
 }
@@ -251,6 +373,7 @@ cir::SignalIdx
 SurelogTranslator::parseVariable(const UHDM::variables& variable) {
     auto name = variable.VpiName();
     auto loc = getLocFromVpi(variable);
+    auto full_name = variable.VpiFullName();
 
     // Hopefully this always exists
     auto type_ref = variable.Typespec();
@@ -259,7 +382,7 @@ SurelogTranslator::parseVariable(const UHDM::variables& variable) {
     auto typ = parseTypespec(*type_ref, name);
 
     auto signal_idx = m_ast.emplaceNode<cir::Signal>(
-        name, loc, typ, cir::SignalDirection::Internal);
+        name, loc, full_name, typ, cir::SignalDirection::Internal);
 
     return signal_idx;
 }

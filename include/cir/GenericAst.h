@@ -24,6 +24,11 @@ struct NodeIndex {
     inline bool isValid() const {
         return valid == 1;
     }
+
+    // Needed for std::set
+    bool operator<(const NodeIndex& other) const {
+        return std::tie(valid, idx) < std::tie(other.valid, other.idx);
+    }
 };
 
 template <typename Node>
@@ -44,6 +49,16 @@ public:
         m_storage.push_back(node);
 
         return new_index;
+    }
+
+    // NOTE: This only works for cir::Signal
+    NodeIndex<Node> findByFullName(std::string_view full_name) {
+        for (int i = 0; i < m_storage.size(); i++){
+            if (m_storage[i].fullName() == full_name) {
+                return NodeIndex<Node>(i);
+            }
+        }
+        return NodeIndex<Node>::null();
     }
 
     bool existsWithName(std::string_view name) {
