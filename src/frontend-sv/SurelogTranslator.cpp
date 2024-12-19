@@ -3,6 +3,7 @@
 #include "../Exceptions.hpp"
 #include "../utils.hpp"
 
+#include "FrontendError.hpp"
 #include "cir/CIR.h"
 #include "uhdm/BaseClass.h"
 #include "uhdm/bit_select.h"
@@ -45,8 +46,8 @@ void SurelogTranslator::parsePort(const UHDM::port& port) {
         ast_direction = cir::SignalDirection::Inout;
     } break;
     default: {
-        throw CompilerException(
-            string_format("Invalid port type for port %s", name), loc);
+        throwError(string_format("Invalid port type for port %s", name), loc);
+        return;
     } break;
     };
 
@@ -153,8 +154,8 @@ SurelogTranslator::parseTypespec(const UHDM::ref_typespec& typespec,
     } else if (dynamic_cast<const UHDM::integer_typespec *>(actual)) {
         kind = cir::TypeKind::Integer;
     } else {
-        throw UnimplementedException(
-            string_format("type for signal %s", signal_name), loc);
+        throwErrorTodo(string_format("type for signal %s", signal_name), loc);
+        kind = cir::TypeKind::Invalid;
     }
 
     auto type_idx = m_ast.addNode<cir::Type>(kind);
@@ -169,14 +170,16 @@ SurelogTranslator::parseTypespec(const UHDM::ref_typespec& typespec,
         for (auto range : *ranges) {
             auto lhs = range->Left_expr<UHDM::constant>();
             if (!lhs) {
-                throw UnimplementedException(
-                    "Non constant ranges are not supported yet", loc);
+                throwErrorTodo("Non constant ranges are not supported yet",
+                               loc);
+                continue;
             }
 
             auto rhs = range->Right_expr<UHDM::constant>();
             if (!rhs) {
-                throw UnimplementedException(
-                    "Non constant ranges are not supported yet", loc);
+                throwErrorTodo("Non constant ranges are not supported yet",
+                               loc);
+                continue;
             }
 
             auto lhs_val = evaluateConstant(lhs->VpiValue(), loc);
@@ -254,16 +257,16 @@ cir::ExprIdx SurelogTranslator::parseExpr(const UHDM::expr& expr) {
         auto ast_const =
             m_ast.emplaceNode<cir::Constant>(val, loc, size, int_val);
         if (size > 64) {
-            throw UnimplementedException(
+            throwErrorTodo(
                 "cannot handle constants bigger than 64 bits (for now)", loc);
+            return m_ast.emplaceNode<cir::Expr>(name, loc,
+                                                cir::ExprKind::Constant);
         }
 
         return m_ast.emplaceNode<cir::Expr>(name, loc, cir::ExprKind::Constant,
                                             ast_const);
     } else if (auto op = dynamic_cast<const UHDM::operation *>(&expr)) {
         auto operands = op->Operands();
-
-
 
         switch (op->VpiOpType()) {
         case vpiAddOp: {
@@ -283,8 +286,10 @@ cir::ExprIdx SurelogTranslator::parseExpr(const UHDM::expr& expr) {
 
         } break;
         default: {
-            throw UnimplementedException(
-                string_format("operation type %d", op->VpiOpType()), loc);
+            throwErrorTodo(string_format("operation type %d", op->VpiOpType()),
+                           loc);
+            return m_ast.emplaceNode<cir::Expr>(name, loc,
+                                                cir::ExprKind::Invalid);
         } break;
         }
 
@@ -320,9 +325,11 @@ cir::ExprIdx SurelogTranslator::parseExpr(const UHDM::expr& expr) {
                                             ast_signal);
 
     } else {
-        throw UnimplementedException("expression type", loc);
+        throwErrorTodo("expression type", loc);
+        return m_ast.emplaceNode<cir::Expr>(name, loc, cir::ExprKind::Invalid);
     }
 
+    CD_UNREACHABLE("all instruction types should be handled");
     return {};
 }
 
@@ -363,6 +370,23 @@ SurelogTranslator::parseVariable(const UHDM::variables& variable) {
         name, loc, full_name, typ, cir::SignalDirection::Internal);
 
     return signal_idx;
+}
+
+std::vector<FrontendError>& SurelogTranslator::getErrors() {
+    return m_errors;
+}
+
+void SurelogTranslator::throwError(std::string message, cir::Loc loc) {
+    m_errors.push_back(FrontendError::other(message, loc));
+}
+
+void SurelogTranslator::throwErrorTodo(std::string message, cir::Loc loc) {
+    m_errors.push_back(FrontendError::todo(message, loc));
+}
+
+void SurelogTranslator::throwErrorUnsupported(std::string message,
+                                              cir::Loc loc) {
+    m_errors.push_back(FrontendError::unsupported(message, loc));
 }
 
 } // namespace cudalator

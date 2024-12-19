@@ -68,6 +68,8 @@ private:
 };
 
 enum class TypeKind {
+    Invalid,
+
     Bit,
     Logic,
     Integer,
@@ -315,6 +317,8 @@ private:
 };
 
 enum class StatementKind {
+    Invalid,
+
     Assignment,
 };
 

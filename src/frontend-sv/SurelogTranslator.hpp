@@ -1,5 +1,6 @@
 #pragma once
 
+#include "FrontendError.hpp"
 #include "cir/CIR.h"
 #include "uhdm/cont_assign.h"
 #include "uhdm/ref_obj.h"
@@ -30,9 +31,16 @@ public:
     cir::TypeIdx parseTypespec(const UHDM::ref_typespec& typespec,
                                std::string_view signal_name);
 
+    std::vector<FrontendError>& getErrors();
+
 private:
     cir::Ast& m_ast;
+    std::vector<FrontendError> m_errors;
 
     cir::SignalIdx getSignalFromRef(const UHDM::ref_obj& ref);
+
+    void throwError(std::string message, cir::Loc loc);
+    void throwErrorTodo(std::string message, cir::Loc loc);
+    void throwErrorUnsupported(std::string message, cir::Loc loc);
 };
 } // namespace cudalator

@@ -15,6 +15,7 @@
 #include <uhdm/vpi_user.h>
 #include <uhdm/vpi_visitor.h>
 
+#include "FrontendError.hpp"
 #include "SurelogTranslator.hpp"
 #include "uhdm/module_inst.h"
 #include "uhdm/uhdm_types.h"
@@ -29,7 +30,8 @@ SystemVerilogFrontend::SystemVerilogFrontend() : m_compiler(nullptr) {
 }
 
 std::unique_ptr<cir::Ast>
-SystemVerilogFrontend::compileSvToCir(std::vector<std::string> sources, bool print_udhm_ast) {
+SystemVerilogFrontend::compileSvToCir(std::vector<std::string> sources,
+                                      bool print_udhm_ast) {
     // Set parameters
     m_clp->noPython();
     m_clp->setMuteStdout();
@@ -67,21 +69,50 @@ std::unique_ptr<cir::Ast>
 SystemVerilogFrontend::translateAst(vpiHandle design_h) {
     auto iter = vpi_iterate(UHDM::uhdmtopModules, design_h);
     auto ast = std::make_unique<cir::Ast>();
-    SurelogTranslator translator(*ast); 
+    SurelogTranslator translator(*ast);
 
     while (vpiHandle mod_h = vpi_scan(iter)) {
         auto mod_name = vpi_get_str(vpiName, mod_h);
 
         auto handle = reinterpret_cast<const uhdm_handle *>(mod_h);
-        auto mod_handle = reinterpret_cast<const UHDM::module_inst *>(handle->object);
+        auto mod_handle =
+            reinterpret_cast<const UHDM::module_inst *>(handle->object);
 
         spdlog::debug("Translating module {}", mod_name);
 
         auto mod_idx = translator.parseModule(*mod_handle);
+        if (translator.getErrors().size() > 0) {
+            auto path = vpi_get_str(vpiFile, mod_h);
+            auto fpath = std::filesystem::path(path);
+            auto file_name = fpath.filename().string();
+
+            for (auto& error : translator.getErrors()) {
+                reportError(error, file_name);
+            }
+            return nullptr;
+        }
         ast->setTopModule(mod_idx);
     }
 
     return ast;
+}
+
+void SystemVerilogFrontend::reportError(FrontendError& error,
+                                        std::string filename) {
+    switch (error.kind()) {
+    case FrontendErrorKind::Unsupported: {
+        spdlog::error("{} (line {}) Unsupported: {}", error.loc().line,
+                      error.message());
+    } break;
+    case FrontendErrorKind::Todo: {
+        spdlog::error("{} (line {}) TODO: {}", filename, error.loc().line,
+                      error.message());
+    } break;
+    case FrontendErrorKind::Other:
+    default: {
+        spdlog::error("{} (line {}): {}", error.loc().line, error.message());
+    } break;
+    }
 }
 
 SystemVerilogFrontend::~SystemVerilogFrontend() {

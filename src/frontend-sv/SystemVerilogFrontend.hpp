@@ -9,6 +9,7 @@
 #include <Surelog/ErrorReporting/ErrorContainer.h>
 #include <Surelog/SourceCompile/SymbolTable.h>
 
+#include "FrontendError.hpp"
 #include "cir/CIR.h"
 #include "uhdm/vpi_user.h"
 
@@ -24,6 +25,7 @@ public:
 
 private:
 
+    void reportError(FrontendError &error, std::string filename);
     std::unique_ptr<cir::Ast> translateAst(vpiHandle design_h);
 
     SURELOG::scompiler *m_compiler;
