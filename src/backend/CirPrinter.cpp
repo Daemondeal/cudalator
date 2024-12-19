@@ -141,7 +141,7 @@ void CirPrinter::printSignal(cir::Ast& ast, const cir::Signal& signal) {
 
     std::cout << "(signal " << signal.name();
 
-    switch (signal.kind()) {
+    switch (signal.direction()) {
     case cir::SignalDirection::Internal: {
         std::cout << " internal";
     } break;

@@ -15,7 +15,7 @@ public:
 
     cir::ModuleIdx parseModule(const UHDM::module_inst& module);
 
-    cir::SignalIdx parsePort(const UHDM::port& port);
+    void parsePort(const UHDM::port& port);
 
     cir::SignalIdx parseNet(const UHDM::net& net);
 

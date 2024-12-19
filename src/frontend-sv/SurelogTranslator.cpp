@@ -27,45 +27,35 @@ static cir::Loc getLocFromVpi(const UHDM::BaseClass& obj_h) {
 
 SurelogTranslator::SurelogTranslator(cir::Ast& ast) : m_ast(ast) {}
 
-cir::SignalIdx SurelogTranslator::parsePort(const UHDM::port& port) {
+void SurelogTranslator::parsePort(const UHDM::port& port) {
     auto name = port.VpiName();
     auto loc = getLocFromVpi(port);
     auto direction = port.VpiDirection();
 
-    cir::SignalDirection kind;
+    cir::SignalDirection ast_direction;
 
     switch (direction) {
     case vpiInput: {
-        kind = cir::SignalDirection::Input;
+        ast_direction = cir::SignalDirection::Input;
     } break;
     case vpiOutput: {
-        kind = cir::SignalDirection::Output;
+        ast_direction = cir::SignalDirection::Output;
     } break;
     case vpiInout: {
-        kind = cir::SignalDirection::Inout;
+        ast_direction = cir::SignalDirection::Inout;
     } break;
     default: {
-        spdlog::error("Invalid port type for port \"{}\"", name);
+        throw CompilerException(
+            string_format("Invalid port type for port %s", name), loc);
     } break;
     };
 
     auto low_conn = port.Low_conn<UHDM::ref_obj>();
-    CD_ASSERT_MSG(!!low_conn, "Port has no associated low_conn .");
+    CD_ASSERT_NONNULL(low_conn);
 
-    if (!low_conn) {
-        spdlog::warn("Cannot find low_conn for port \"{}\"", name);
-        return cir::SignalIdx::null();
-    }
-
-    auto net = low_conn->Actual_group<UHDM::net>();
-    CD_ASSERT_MSG(!!net, "Port has no associated low_conn net.");
-    auto full_name = net->VpiFullName();
-
-    auto typespec = net->Typespec();
-    CD_ASSERT_MSG(!!net, "Port has no associated low_conn net typespec.");
-    auto typ = parseTypespec(*typespec, name);
-
-    return m_ast.emplaceNode<cir::Signal>(name, loc, full_name, typ, kind);
+    auto signal_idx = getSignalFromRef(*low_conn);
+    auto& signal = m_ast.getNode(signal_idx);
+    signal.setDirection(ast_direction);
 }
 
 cir::ModuleIdx SurelogTranslator::parseModule(const UHDM::module_inst& module) {
@@ -75,12 +65,10 @@ cir::ModuleIdx SurelogTranslator::parseModule(const UHDM::module_inst& module) {
     auto mod_idx = m_ast.emplaceNode<cir::Module>(name, loc);
     auto& ast_mod = m_ast.getNode(mod_idx);
 
-    if (module.Ports()) {
-        for (auto port : *module.Ports()) {
-            auto port_idx = parsePort(*port);
-            if (port_idx.isValid()) {
-                ast_mod.addSignal(port_idx);
-            }
+    if (module.Nets()) {
+        for (auto net : *module.Nets()) {
+            auto ast_net = parseNet(*net);
+            ast_mod.addSignal(ast_net);
         }
     }
 
@@ -91,20 +79,9 @@ cir::ModuleIdx SurelogTranslator::parseModule(const UHDM::module_inst& module) {
         }
     }
 
-    if (module.Nets()) {
-        for (auto net : *module.Nets()) {
-            auto name = net->VpiName();
-
-            // This is a workaround for the fact that net->Ports() seems to
-            // never return a valid pointer, even when the signal is a port.
-            // FIXME: Try to debug this better, maybe there's something we don't
-            // understand
-            if (!m_ast.existsWithName<cir::Signal>(name)) {
-                auto ast_net = parseNet(*net);
-                ast_mod.addSignal(ast_net);
-            } else {
-                spdlog::debug("Skipping {} as it already exists", name);
-            }
+    if (module.Ports()) {
+        for (auto port : *module.Ports()) {
+            parsePort(*port);
         }
     }
 
@@ -243,9 +220,8 @@ SurelogTranslator::parseContinuousAssignment(const UHDM::cont_assign& assign) {
     // TODO: Maybe handle the sensitivity list
     auto proc_idx = m_ast.emplaceNode<cir::Process>(name, loc, assignment_idx);
 
-    auto &proc = m_ast.getNode(proc_idx);
+    auto& proc = m_ast.getNode(proc_idx);
     proc.setShouldPopulateSensitivityList(true);
-
 
     return proc_idx;
 }

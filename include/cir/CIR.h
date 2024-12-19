@@ -117,7 +117,7 @@ public:
     explicit Signal(std::string_view name, Loc loc, std::string_view full_name,
                     TypeIdx type, SignalDirection kind)
         : NodeBase(name, loc), m_full_name(full_name), m_type(type),
-          m_kind(kind) {}
+          m_direction(kind) {}
 
     std::string_view fullName() {
         return m_full_name;
@@ -126,15 +126,20 @@ public:
         return m_type;
     }
 
-    SignalDirection kind() const {
-        return m_kind;
+    SignalDirection direction() const {
+        return m_direction;
     }
+
+    void setDirection(SignalDirection direction) {
+        m_direction = direction;
+    }
+
 
 private:
     TypeIdx m_type;
 
     std::string_view m_full_name;
-    SignalDirection m_kind;
+    SignalDirection m_direction;
 };
 
 struct Constant : NodeBase {
