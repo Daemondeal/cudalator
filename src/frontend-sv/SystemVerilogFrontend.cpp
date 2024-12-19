@@ -15,35 +15,11 @@
 #include <uhdm/vpi_user.h>
 #include <uhdm/vpi_visitor.h>
 
-#include "SurelogParser.hpp"
 #include "SurelogTranslator.hpp"
 #include "uhdm/module_inst.h"
 #include "uhdm/uhdm_types.h"
 
 namespace cudalator {
-
-static bool run_sample_listener(const vpiHandle& design_handle) {
-    SurelogParser parser;
-
-    // visit and print to stdout
-    vpiHandle top_entity = vpi_handle(vpiTopModule, design_handle);
-
-    auto iterator = vpi_iterate(UHDM::uhdmtopModules, design_handle);
-
-    while (vpiHandle mod_h = vpi_scan(iterator)) {
-        auto str = vpi_get_str(vpiName, mod_h);
-
-        if (strcmp("work@simple", str) == 0)
-            UHDM::visit_object(mod_h, std::cout);
-    }
-
-    spdlog::debug("Starting the parser");
-
-    parser.parse(design_handle);
-
-    spdlog::debug("Parser Done");
-    return true;
-}
 
 SystemVerilogFrontend::SystemVerilogFrontend() : m_compiler(nullptr) {
     m_symbol_table = std::make_unique<SURELOG::SymbolTable>();
