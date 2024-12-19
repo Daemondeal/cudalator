@@ -263,6 +263,8 @@ cir::ExprIdx SurelogTranslator::parseExpr(const UHDM::expr& expr) {
     } else if (auto op = dynamic_cast<const UHDM::operation *>(&expr)) {
         auto operands = op->Operands();
 
+
+
         switch (op->VpiOpType()) {
         case vpiAddOp: {
             CD_ASSERT_NONNULL(operands);

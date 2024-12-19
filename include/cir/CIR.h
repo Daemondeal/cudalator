@@ -134,7 +134,6 @@ public:
         m_direction = direction;
     }
 
-
 private:
     TypeIdx m_type;
 
@@ -165,10 +164,45 @@ private:
 };
 
 enum class ExprKind {
+    Invalid,
+
     Constant,
 
-    // exprs[0]: lhs, exprs[1]: rhs
+    // Unary:
+    // (exprs[0]: operand)
+    UnaryMinus,
+    UnaryPlus,
+    Not,
+    ReductionAnd,
+    ReductionNand,
+    ReductionOr,
+    ReductionNor,
+    ReductionXor,
+    ReductionXnor,
+    Posedge,
+    Negedge,
+
+    // Binary:
+    // (exprs[0]: lhs, exprs[1]: rhs)
+    Subtraction,
+    Division,
+    Modulo,
+    Equality,
+    NotEquality,
+    GreaterThan,
+    GreaterThanEq,
+    LessThan,
+    LessThanEq,
+    LeftShift,
+    RightShift,
     Addition,
+    Multiplication,
+    LogicalAnd,
+    LogicalOr,
+    BitwiseAnd,
+    BitwiseOr,
+    BitwiseXor,
+    BitwiseXnor,
 
     // exprs[0]: lhs, exprs[1]: rhs, signal: target
     PartSelect,
@@ -230,6 +264,45 @@ public:
     void addExpr(ExprIdx expr) {
         m_exprs.push_back(expr);
     }
+
+    // clang-format off
+    bool isUnary() {
+        return (m_kind == ExprKind::UnaryMinus) ||
+               (m_kind == ExprKind::UnaryPlus) ||
+               (m_kind == ExprKind::Not) ||
+               (m_kind == ExprKind::ReductionAnd) ||
+               (m_kind == ExprKind::ReductionNand) ||
+               (m_kind == ExprKind::ReductionOr) ||
+               (m_kind == ExprKind::ReductionNor) ||
+               (m_kind == ExprKind::ReductionXor) ||
+               (m_kind == ExprKind::ReductionXnor) ||
+               (m_kind == ExprKind::Posedge) ||
+               (m_kind == ExprKind::Negedge);
+    }
+
+    bool isBinary() {
+        return (m_kind == ExprKind::Subtraction) ||
+               (m_kind == ExprKind::Division) ||
+               (m_kind == ExprKind::Modulo) ||
+               (m_kind == ExprKind::Equality) ||
+               (m_kind == ExprKind::NotEquality) ||
+               (m_kind == ExprKind::GreaterThan) ||
+               (m_kind == ExprKind::GreaterThanEq) ||
+               (m_kind == ExprKind::LessThan) ||
+               (m_kind == ExprKind::LessThanEq) ||
+               (m_kind == ExprKind::LeftShift) ||
+               (m_kind == ExprKind::RightShift) ||
+               (m_kind == ExprKind::Addition) ||
+               (m_kind == ExprKind::Multiplication) ||
+               (m_kind == ExprKind::LogicalAnd) ||
+               (m_kind == ExprKind::LogicalOr) ||
+               (m_kind == ExprKind::BitwiseAnd) ||
+               (m_kind == ExprKind::BitwiseOr) ||
+               (m_kind == ExprKind::BitwiseXor) ||
+               (m_kind == ExprKind::BitwiseXnor);
+    }
+
+    // clang-format on
 
 private:
     ExprKind m_kind;
