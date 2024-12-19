@@ -1,4 +1,89 @@
 #include "utils.hpp"
+#include "cir/CIR.h"
+#include "uhdm/vpi_user.h"
+#include <spdlog/spdlog.h>
+
+cir::ExprKind vpiUnaryOp(uint32_t op_t) {
+    switch (op_t) {
+    case vpiMinusOp:
+        return cir::ExprKind::UnaryMinus;
+    case vpiPlusOp:
+        return cir::ExprKind::UnaryPlus;
+    case vpiNotOp:
+        return cir::ExprKind::Not;
+    case vpiBitNegOp: // FIXME: Check what this is
+        spdlog::warn("vpiBitNegOp found");
+        return cir::ExprKind::Not;
+    case vpiUnaryAndOp:
+        return cir::ExprKind::ReductionAnd;
+    case vpiUnaryNandOp:
+        return cir::ExprKind::ReductionNand;
+    case vpiUnaryOrOp:
+        return cir::ExprKind::ReductionOr;
+    case vpiUnaryNorOp:
+        return cir::ExprKind::ReductionNor;
+    case vpiUnaryXorOp:
+        return cir::ExprKind::ReductionXor;
+    case vpiUnaryXNorOp:
+        return cir::ExprKind::ReductionXnor;
+    case vpiPosedgeOp:
+        return cir::ExprKind::Posedge;
+    case vpiNegedgeOp:
+        return cir::ExprKind::Negedge;
+    default:
+        return cir::ExprKind::Invalid;
+    }
+}
+
+cir::ExprKind vpiBinaryOp(uint32_t op_t) {
+    switch (op_t) {
+    case vpiSubOp:
+        return cir::ExprKind::Subtraction;
+    case vpiDivOp:
+        return cir::ExprKind::Division;
+    case vpiModOp:
+        return cir::ExprKind::Modulo;
+    case vpiEqOp:
+        return cir::ExprKind::Equality;
+    case vpiNeqOp:
+        return cir::ExprKind::NotEquality;
+    // TODO: Look at what these are
+    // case vpiCaseEqOp:
+    //         return cir::ExprKind::;
+    // case vpiCaseNeqOp:
+    //         return cir::ExprKind::;
+    case vpiGtOp:
+        return cir::ExprKind::GreaterThan;
+    case vpiGeOp:
+        return cir::ExprKind::GreaterThanEq;
+    case vpiLtOp:
+        return cir::ExprKind::LessThan;
+    case vpiLeOp:
+        return cir::ExprKind::LessThanEq;
+    case vpiLShiftOp:
+        return cir::ExprKind::LeftShift;
+    case vpiRShiftOp:
+        return cir::ExprKind::RightShift;
+    case vpiAddOp:
+        return cir::ExprKind::Addition;
+    case vpiMultOp:
+        return cir::ExprKind::Multiplication;
+    case vpiLogAndOp:
+        return cir::ExprKind::LogicalAnd;
+    case vpiLogOrOp:
+        return cir::ExprKind::LogicalOr;
+    case vpiBitAndOp:
+        return cir::ExprKind::BitwiseAnd;
+    case vpiBitOrOp:
+        return cir::ExprKind::BitwiseOr;
+    case vpiBitXorOp:
+        return cir::ExprKind::BitwiseXor;
+    case vpiBitXnorOp:
+        return cir::ExprKind::BitwiseXnor;
+    default:
+        return cir::ExprKind::Invalid;
+    }
+}
 
 std::string getVpiTypeName(uint32_t type) {
     switch (type) {

@@ -221,6 +221,9 @@ public:
          ExprIdx rhs)
         : NodeBase(name, loc), m_kind(kind), m_exprs({lhs, rhs}) {}
 
+    Expr(std::string_view name, Loc loc, ExprKind kind, ExprIdx operand)
+        : NodeBase(name, loc), m_kind(kind), m_exprs({operand}) {}
+
     Expr(std::string_view name, Loc loc, ExprKind kind, ExprIdx lhs,
          ExprIdx rhs, SignalIdx signal)
         : NodeBase(name, loc), m_kind(kind), m_exprs({lhs, rhs}),
@@ -268,7 +271,7 @@ public:
     }
 
     // clang-format off
-    bool isUnary() {
+    bool isUnary() const {
         return (m_kind == ExprKind::UnaryMinus) ||
                (m_kind == ExprKind::UnaryPlus) ||
                (m_kind == ExprKind::Not) ||
@@ -282,7 +285,7 @@ public:
                (m_kind == ExprKind::Negedge);
     }
 
-    bool isBinary() {
+    bool isBinary() const {
         return (m_kind == ExprKind::Subtraction) ||
                (m_kind == ExprKind::Division) ||
                (m_kind == ExprKind::Modulo) ||

@@ -17,8 +17,10 @@ public:
     void printSignal(cir::Ast& ast, const cir::Signal& signal);
     void printType(cir::Ast& ast, const cir::Type& type);
 
-private:
+    void printUnaryOp(const cir::ExprKind kind);
+    void printBinaryOp(const cir::ExprKind kind);
 
+private:
     void printIndent();
     uint32_t m_indent;
 };

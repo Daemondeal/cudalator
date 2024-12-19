@@ -16,6 +16,7 @@
 #include "uhdm/part_select.h"
 #include "uhdm/ref_obj.h"
 #include "uhdm/vpi_user.h"
+#include "utils.hpp"
 #include <charconv>
 #include <spdlog/spdlog.h>
 #include <string_view>
@@ -268,8 +269,18 @@ cir::ExprIdx SurelogTranslator::parseExpr(const UHDM::expr& expr) {
     } else if (auto op = dynamic_cast<const UHDM::operation *>(&expr)) {
         auto operands = op->Operands();
 
-        switch (op->VpiOpType()) {
-        case vpiAddOp: {
+        auto unary_op = vpiUnaryOp(op->VpiOpType()) ;
+        if (unary_op != cir::ExprKind::Invalid) {
+            CD_ASSERT_NONNULL(operands);
+            auto operand = dynamic_cast<UHDM::expr *>(operands->at(0));
+            CD_ASSERT_NONNULL(operand);
+
+            auto ast_operand = parseExpr(*operand);
+            return m_ast.emplaceNode<cir::Expr>(name, loc, unary_op, ast_operand);
+        }
+
+        auto binary_op = vpiBinaryOp(op->VpiOpType()) ;
+        if (binary_op != cir::ExprKind::Invalid) {
             CD_ASSERT_NONNULL(operands);
 
             auto lhs = dynamic_cast<UHDM::expr *>(operands->at(0));
@@ -282,9 +293,11 @@ cir::ExprIdx SurelogTranslator::parseExpr(const UHDM::expr& expr) {
             auto ast_rhs = parseExpr(*rhs);
 
             return m_ast.emplaceNode<cir::Expr>(
-                name, loc, cir::ExprKind::Addition, ast_lhs, ast_rhs);
+                name, loc, binary_op, ast_lhs, ast_rhs);
+        }
 
-        } break;
+
+        switch (op->VpiOpType()) {
         default: {
             throwErrorTodo(string_format("operation type %d", op->VpiOpType()),
                            loc);
