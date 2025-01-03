@@ -2,6 +2,7 @@
 
 #include "GenericAst.h"
 #include <cstdint>
+#include <spdlog/spdlog.h>
 #include <string_view>
 #include <vector>
 

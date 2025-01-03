@@ -88,7 +88,6 @@ void CirPrinter::printStatement(cir::Ast& ast,
         printIndent();
         std::cout << "(block \n";
 
-        spdlog::info("block has {} stmts", statement.statements().size());
         m_indent++;
         for (auto sub_idx : statement.statements()) {
             auto& sub_stmt = ast.getNode(sub_idx);

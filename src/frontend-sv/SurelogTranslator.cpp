@@ -7,10 +7,10 @@
 #include "cir/CIR.h"
 #include "utils.hpp"
 
-#include <uhdm/uhdm.h>
 #include <charconv>
 #include <spdlog/spdlog.h>
 #include <string_view>
+#include <uhdm/uhdm.h>
 #include <vector>
 
 namespace cudalator {
@@ -64,11 +64,11 @@ cir::ModuleIdx SurelogTranslator::parseModule(const UHDM::module_inst& module) {
     auto loc = getLocFromVpi(module);
 
     auto mod_idx = m_ast.emplaceNode<cir::Module>(name, loc);
-    auto& ast_mod = m_ast.getNode(mod_idx);
 
     if (module.Nets()) {
         for (auto net : *module.Nets()) {
             auto ast_net = parseNet(*net);
+            auto& ast_mod = m_ast.getNode(mod_idx);
             ast_mod.addSignal(ast_net);
         }
     }
@@ -76,6 +76,7 @@ cir::ModuleIdx SurelogTranslator::parseModule(const UHDM::module_inst& module) {
     if (module.Variables()) {
         for (auto variable : *module.Variables()) {
             auto ast_variable = parseVariable(*variable);
+            auto& ast_mod = m_ast.getNode(mod_idx);
             ast_mod.addSignal(ast_variable);
         }
     }
@@ -91,6 +92,7 @@ cir::ModuleIdx SurelogTranslator::parseModule(const UHDM::module_inst& module) {
             auto proc_idx = parseContinuousAssignment(*assign);
 
             if (proc_idx.isValid()) {
+                auto& ast_mod = m_ast.getNode(mod_idx);
                 ast_mod.addProcess(proc_idx);
             }
         }
@@ -108,6 +110,7 @@ cir::ModuleIdx SurelogTranslator::parseModule(const UHDM::module_inst& module) {
             }
 
             if (proc_idx.isValid()) {
+                auto& ast_mod = m_ast.getNode(mod_idx);
                 ast_mod.addProcess(proc_idx);
             }
         }
@@ -222,7 +225,8 @@ void SurelogTranslator::parseSensitivityList(
     }
 }
 
-cir::StatementIdx SurelogTranslator::parseStatement(const UHDM::any *statement) {
+cir::StatementIdx
+SurelogTranslator::parseStatement(const UHDM::any *statement) {
     if (auto scope = dynamic_cast<const UHDM::scope *>(statement)) {
         return parseScope(*scope);
     } else if (auto atomic_stmt =
@@ -243,28 +247,29 @@ cir::StatementIdx SurelogTranslator::parseScope(const UHDM::scope& scope) {
     const UHDM::scope *scope_ptr = &scope;
 
     if (auto begin = dynamic_cast<const UHDM::begin *>(scope_ptr)) {
-        ast_stmt = m_ast.emplaceNode<cir::Statement>(name, loc, cir::StatementKind::Block);
-        auto &stmt = m_ast.getNode(ast_stmt);
+        ast_stmt = m_ast.emplaceNode<cir::Statement>(name, loc,
+                                                     cir::StatementKind::Block);
 
         if (begin->Stmts()) {
             for (auto statement : *begin->Stmts()) {
-                spdlog::info("Adding statement");
-                stmt.addStatement(parseStatement(statement));
+                auto parsed = parseStatement(statement);
+                auto &stmt = m_ast.getNode(ast_stmt);
+                stmt.addStatement(parsed);
             }
         }
-        spdlog::info("block has {} stmts", stmt.statements().size());
     } else if (auto named_begin =
                    dynamic_cast<const UHDM::named_begin *>(scope_ptr)) {
-        ast_stmt = m_ast.emplaceNode<cir::Statement>(name, loc, cir::StatementKind::Block);
-        auto &stmt = m_ast.getNode(ast_stmt);
+        ast_stmt = m_ast.emplaceNode<cir::Statement>(name, loc,
+                                                     cir::StatementKind::Block);
 
-        if (begin->Stmts()) {
-            for (auto statement : *begin->Stmts()) {
-                stmt.addStatement(parseStatement(statement));
+        if (named_begin->Stmts()) {
+            for (auto statement : *named_begin->Stmts()) {
+                auto parsed = parseStatement(statement);
+                auto &stmt = m_ast.getNode(ast_stmt);
+                stmt.addStatement(parsed);
             }
         }
     }
-
 
     return ast_stmt;
 }
@@ -303,7 +308,6 @@ SurelogTranslator::parseTypespec(const UHDM::ref_typespec& typespec,
     }
 
     auto type_idx = m_ast.emplaceNode<cir::Type>(kind);
-    auto& type = m_ast.getNode(type_idx);
 
     // Ranges
 
@@ -333,6 +337,7 @@ SurelogTranslator::parseTypespec(const UHDM::ref_typespec& typespec,
 
             spdlog::debug("Adding range [{}:{}] to {}", lhs_val, rhs_val,
                           signal_name);
+            auto& type = m_ast.getNode(type_idx);
             type.addRange(ast_range);
         }
     };
