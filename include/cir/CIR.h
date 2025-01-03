@@ -363,12 +363,28 @@ private:
     std::vector<StatementIdx> m_statements;
 };
 
+
+enum class SensitivityKind : uint8_t {
+    OnChange,
+    Posedge,
+    Negedge
+};
+
+struct SensitivityListElement {
+public:
+    SensitivityListElement(SignalIdx signal, SensitivityKind kind) : kind(kind), signal(signal) {}
+
+    SensitivityKind kind;
+    SignalIdx signal;
+
+};
+
 struct Process : NodeBase {
 public:
     Process(std::string_view name, Loc loc, StatementIdx statement)
         : NodeBase(name, loc), m_statement(statement) {}
 
-    const std::vector<SignalIdx>& sensitivityList() const {
+    const std::vector<SensitivityListElement>& sensitivityList() const {
         return m_sensitivity_list;
     }
 
@@ -376,8 +392,12 @@ public:
         return m_statement;
     }
 
-    void addToSensitivityList(SignalIdx signal) {
-        m_sensitivity_list.push_back(signal);
+    void addToSensitivityList(SignalIdx signal, SensitivityKind kind) {
+        m_sensitivity_list.emplace_back(signal, kind);
+    }
+
+    void setSensitivityList(std::vector<SensitivityListElement> &&sensitivityList) {
+        m_sensitivity_list = std::move(sensitivityList);
     }
 
     void setShouldPopulateSensitivityList(bool val) {
@@ -389,7 +409,7 @@ public:
     }
 
 private:
-    std::vector<SignalIdx> m_sensitivity_list;
+    std::vector<SensitivityListElement> m_sensitivity_list;
     StatementIdx m_statement;
 
     bool m_should_populate_sensitivity_list = false;

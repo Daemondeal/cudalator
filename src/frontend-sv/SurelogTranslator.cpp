@@ -6,20 +6,26 @@
 #include "FrontendError.hpp"
 #include "cir/CIR.h"
 #include "uhdm/BaseClass.h"
+#include "uhdm/always.h"
 #include "uhdm/bit_select.h"
 #include "uhdm/bit_typespec.h"
 #include "uhdm/constant.h"
 #include "uhdm/cont_assign.h"
 #include "uhdm/containers.h"
+#include "uhdm/event_control.h"
+#include "uhdm/if_stmt.h"
 #include "uhdm/integer_typespec.h"
 #include "uhdm/logic_typespec.h"
 #include "uhdm/part_select.h"
 #include "uhdm/ref_obj.h"
+#include "uhdm/scope.h"
+#include "uhdm/sv_vpi_user.h"
 #include "uhdm/vpi_user.h"
 #include "utils.hpp"
 #include <charconv>
 #include <spdlog/spdlog.h>
 #include <string_view>
+#include <vector>
 
 namespace cudalator {
 
@@ -27,38 +33,45 @@ static cir::Loc getLocFromVpi(const UHDM::BaseClass& obj_h) {
     return cir::Loc(obj_h.VpiLineNo(), obj_h.VpiColumnNo());
 }
 
-SurelogTranslator::SurelogTranslator(cir::Ast& ast) : m_ast(ast) {}
+// FIXME: This is not the proper way to do this, implement this properly.
+static int64_t evaluateConstant(std::string_view constant, cir::Loc loc) {
+    auto pos = constant.find(':');
+    if (pos == std::string_view::npos) {
+        throw CompilerException("Invalid constant type", loc);
+    }
 
-void SurelogTranslator::parsePort(const UHDM::port& port) {
-    auto name = port.VpiName();
-    auto loc = getLocFromVpi(port);
-    auto direction = port.VpiDirection();
+    std::string_view prefix = constant.substr(0, pos);
+    std::string_view value_str = constant.substr(pos + 1);
+    int64_t result = 0;
 
-    cir::SignalDirection ast_direction;
+    if (prefix == "UINT") {
+        uint64_t temp;
+        auto [ptr, ec] =
+            std::from_chars(value_str.begin(), value_str.end(), temp, 10);
+        if (ec != std::errc()) {
+            throw CompilerException("Invalid UINT constant value", loc);
+        }
+        result = static_cast<int64_t>(temp);
+    } else if (prefix == "INT") {
+        auto [ptr, ec] =
+            std::from_chars(value_str.begin(), value_str.end(), result, 10);
+        if (ec != std::errc()) {
+            throw CompilerException("Invalid INT constant value", loc);
+        }
+    } else if (prefix == "HEX") {
+        auto [ptr, ec] =
+            std::from_chars(value_str.begin(), value_str.end(), result, 16);
+        if (ec != std::errc()) {
+            throw CompilerException("Invalid HEX constant value", loc);
+        }
+    } else {
+        throw CompilerException("Unknown constant type", loc);
+    }
 
-    switch (direction) {
-    case vpiInput: {
-        ast_direction = cir::SignalDirection::Input;
-    } break;
-    case vpiOutput: {
-        ast_direction = cir::SignalDirection::Output;
-    } break;
-    case vpiInout: {
-        ast_direction = cir::SignalDirection::Inout;
-    } break;
-    default: {
-        throwError(string_format("Invalid port type for port %s", name), loc);
-        return;
-    } break;
-    };
-
-    auto low_conn = port.Low_conn<UHDM::ref_obj>();
-    CD_ASSERT_NONNULL(low_conn);
-
-    auto signal_idx = getSignalFromRef(*low_conn);
-    auto& signal = m_ast.getNode(signal_idx);
-    signal.setDirection(ast_direction);
+    return result;
 }
+
+SurelogTranslator::SurelogTranslator(cir::Ast& ast) : m_ast(ast) {}
 
 cir::ModuleIdx SurelogTranslator::parseModule(const UHDM::module_inst& module) {
     auto name = module.VpiName();
@@ -97,46 +110,165 @@ cir::ModuleIdx SurelogTranslator::parseModule(const UHDM::module_inst& module) {
         }
     }
 
+    if (module.Process()) {
+        for (auto process : *module.Process()) {
+            cir::ProcessIdx proc_idx(cir::ProcessIdx::null());
+
+            if (auto always = dynamic_cast<const UHDM::always *>(process)) {
+                proc_idx = parseAlways(*always);
+            } else {
+                spdlog::warn("Only always processes are implemented, skipping "
+                             "non-always process.");
+            }
+
+            if (proc_idx.isValid()) {
+                ast_mod.addProcess(proc_idx);
+            }
+        }
+    }
+
     // TODO: Add the rest
 
     return mod_idx;
 }
 
-static int64_t evaluateConstant(std::string_view constant, cir::Loc loc) {
-    auto pos = constant.find(':');
-    if (pos == std::string_view::npos) {
-        throw CompilerException("Invalid constant type", loc);
+void SurelogTranslator::parsePort(const UHDM::port& port) {
+    auto name = port.VpiName();
+    auto loc = getLocFromVpi(port);
+    auto direction = port.VpiDirection();
+
+    cir::SignalDirection ast_direction;
+
+    switch (direction) {
+    case vpiInput: {
+        ast_direction = cir::SignalDirection::Input;
+    } break;
+    case vpiOutput: {
+        ast_direction = cir::SignalDirection::Output;
+    } break;
+    case vpiInout: {
+        ast_direction = cir::SignalDirection::Inout;
+    } break;
+    default: {
+        throwError(string_format("Invalid port type for port %s", name), loc);
+        return;
+    } break;
+    };
+
+    auto low_conn = port.Low_conn<UHDM::ref_obj>();
+    CD_ASSERT_NONNULL(low_conn);
+
+    auto signal_idx = getSignalFromRef(*low_conn);
+    auto& signal = m_ast.getNode(signal_idx);
+    signal.setDirection(ast_direction);
+}
+
+cir::ProcessIdx SurelogTranslator::parseAlways(const UHDM::always& proc) {
+    auto name = proc.VpiName();
+    auto loc = getLocFromVpi(proc);
+
+    auto type = proc.VpiAlwaysType();
+
+    auto statement = nullptr;
+
+    // All processes should have at least one statement
+    CD_ASSERT_NONNULL(proc.Stmt());
+
+    const UHDM::any *stmt = proc.Stmt();
+
+    std::vector<cir::SensitivityListElement> sensitivity;
+    if (auto event_control = proc.Stmt<UHDM::event_control>()) {
+        parseSensitivityList(event_control->VpiCondition(), sensitivity);
+
+        stmt = event_control->Stmt();
     }
 
-    std::string_view prefix = constant.substr(0, pos);
-    std::string_view value_str = constant.substr(pos + 1);
-    int64_t result = 0;
+    cir::StatementIdx ast_stmt;
 
-    if (prefix == "UINT") {
-        uint64_t temp;
-        auto [ptr, ec] =
-            std::from_chars(value_str.begin(), value_str.end(), temp, 10);
-        if (ec != std::errc()) {
-            throw CompilerException("Invalid UINT constant value", loc);
-        }
-        result = static_cast<int64_t>(temp);
-    } else if (prefix == "INT") {
-        auto [ptr, ec] =
-            std::from_chars(value_str.begin(), value_str.end(), result, 10);
-        if (ec != std::errc()) {
-            throw CompilerException("Invalid INT constant value", loc);
-        }
-    } else if (prefix == "HEX") {
-        auto [ptr, ec] =
-            std::from_chars(value_str.begin(), value_str.end(), result, 16);
-        if (ec != std::errc()) {
-            throw CompilerException("Invalid HEX constant value", loc);
-        }
+    if (auto scope = dynamic_cast<const UHDM::scope *>(stmt)) {
+        ast_stmt = parseScope(*scope);
+    } else if (auto atomic_stmt =
+                   dynamic_cast<const UHDM::atomic_stmt *>(stmt)) {
+        ast_stmt = parseAtomicStmt(*atomic_stmt);
     } else {
-        throw CompilerException("Unknown constant type", loc);
+        CD_UNREACHABLE("Statement is neither a scope nor an atomic stmt");
     }
 
-    return result;
+    auto proc_idx = m_ast.emplaceNode<cir::Process>(name, loc, ast_stmt);
+    auto &ast_proc = m_ast.getNode(proc_idx);
+    ast_proc.setSensitivityList(std::move(sensitivity));
+
+
+    if (type == vpiAlwaysComb) {
+        ast_proc.setShouldPopulateSensitivityList(true);
+    }
+
+    return proc_idx;
+}
+
+void SurelogTranslator::parseSensitivityList(
+    const UHDM::any *condition,
+    std::vector<cir::SensitivityListElement>& result) {
+
+    auto op = dynamic_cast<const UHDM::operation *>(condition);
+    auto ref = dynamic_cast<const UHDM::ref_obj *>(condition);
+
+    if (op) {
+        auto op_type = op->VpiOpType();
+
+        if (op_type == vpiListOp) {
+            for (auto operand : *op->Operands()) {
+                parseSensitivityList(operand, result);
+            }
+        } else if (op_type == vpiNegedgeOp || op_type == vpiPosedgeOp) {
+            auto kind = op_type == vpiNegedgeOp ? cir::SensitivityKind::Negedge
+                                              : cir::SensitivityKind::Posedge;
+
+            auto operands = op->Operands();
+            CD_ASSERT_NONNULL(operands);
+
+            auto first_operand = operands->at(0);
+            CD_ASSERT_NONNULL(first_operand);
+
+            auto ref = dynamic_cast<const UHDM::ref_obj *>(first_operand);
+            CD_ASSERT_NONNULL(ref);
+
+            auto signal = getSignalFromRef(*ref);
+            auto elem = cir::SensitivityListElement(signal, kind);
+            result.push_back(elem);
+        }
+    } else if (ref) {
+        auto signal = getSignalFromRef(*ref);
+        auto elem = cir::SensitivityListElement(signal, cir::SensitivityKind::OnChange);
+        result.push_back(elem);
+    } else {
+        CD_UNREACHABLE("Sensitivity list element was neither an op nor a ref_obj");
+    }
+}
+
+cir::StatementIdx SurelogTranslator::parseScope(const UHDM::scope& scope) {
+    auto name = scope.VpiName();
+    auto loc = getLocFromVpi(scope);
+
+    auto kind = cir::StatementKind::Invalid;
+
+    auto ast_stmt = m_ast.emplaceNode<cir::Statement>(name, loc, kind);
+
+    spdlog::warn("todo: parseScope");
+    return ast_stmt;
+}
+
+cir::StatementIdx
+SurelogTranslator::parseAtomicStmt(const UHDM::atomic_stmt& scope) {
+    auto name = scope.VpiName();
+    auto loc = getLocFromVpi(scope);
+
+    auto kind = cir::StatementKind::Invalid;
+
+    auto ast_stmt = m_ast.emplaceNode<cir::Statement>(name, loc, kind);
+
+    spdlog::warn("todo: parseAtomicStmt");
+    return ast_stmt;
 }
 
 cir::TypeIdx
@@ -221,7 +353,6 @@ SurelogTranslator::parseContinuousAssignment(const UHDM::cont_assign& assign) {
     auto assignment_idx = m_ast.emplaceNode<cir::Statement>(
         name, loc, cir::StatementKind::Assignment, lhs_idx, rhs_idx);
 
-    // TODO: Maybe handle the sensitivity list
     auto proc_idx = m_ast.emplaceNode<cir::Process>(name, loc, assignment_idx);
 
     auto& proc = m_ast.getNode(proc_idx);
@@ -269,17 +400,18 @@ cir::ExprIdx SurelogTranslator::parseExpr(const UHDM::expr& expr) {
     } else if (auto op = dynamic_cast<const UHDM::operation *>(&expr)) {
         auto operands = op->Operands();
 
-        auto unary_op = vpiUnaryOp(op->VpiOpType()) ;
+        auto unary_op = vpiUnaryOp(op->VpiOpType());
         if (unary_op != cir::ExprKind::Invalid) {
             CD_ASSERT_NONNULL(operands);
             auto operand = dynamic_cast<UHDM::expr *>(operands->at(0));
             CD_ASSERT_NONNULL(operand);
 
             auto ast_operand = parseExpr(*operand);
-            return m_ast.emplaceNode<cir::Expr>(name, loc, unary_op, ast_operand);
+            return m_ast.emplaceNode<cir::Expr>(name, loc, unary_op,
+                                                ast_operand);
         }
 
-        auto binary_op = vpiBinaryOp(op->VpiOpType()) ;
+        auto binary_op = vpiBinaryOp(op->VpiOpType());
         if (binary_op != cir::ExprKind::Invalid) {
             CD_ASSERT_NONNULL(operands);
 
@@ -292,10 +424,9 @@ cir::ExprIdx SurelogTranslator::parseExpr(const UHDM::expr& expr) {
             auto ast_lhs = parseExpr(*lhs);
             auto ast_rhs = parseExpr(*rhs);
 
-            return m_ast.emplaceNode<cir::Expr>(
-                name, loc, binary_op, ast_lhs, ast_rhs);
+            return m_ast.emplaceNode<cir::Expr>(name, loc, binary_op, ast_lhs,
+                                                ast_rhs);
         }
-
 
         switch (op->VpiOpType()) {
         default: {

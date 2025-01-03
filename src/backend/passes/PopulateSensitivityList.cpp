@@ -28,7 +28,7 @@ void PopulateSensitivityList::processProcess(cir::Process& proc) {
     //        We should check if that is even possible with always_comb or if it
     //        should be a compiler error.
     for (auto idx : m_collected_signals) {
-        proc.addToSensitivityList(idx);
+        proc.addToSensitivityList(idx, cir::SensitivityKind::OnChange);
     }
 }
 

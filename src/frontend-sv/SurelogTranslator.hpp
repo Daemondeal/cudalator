@@ -2,9 +2,11 @@
 
 #include "FrontendError.hpp"
 #include "cir/CIR.h"
+#include "uhdm/atomic_stmt.h"
 #include "uhdm/cont_assign.h"
 #include "uhdm/ref_obj.h"
 #include "uhdm/ref_typespec.h"
+#include "uhdm/scope.h"
 #include "uhdm/variables.h"
 #include <string_view>
 #include <uhdm/uhdm.h>
@@ -22,7 +24,13 @@ public:
 
     cir::SignalIdx parseVariable(const UHDM::variables& variable);
 
-    cir::ProcessIdx parseProcess(const UHDM::process_stmt& proc);
+    cir::ProcessIdx parseAlways(const UHDM::always& proc);
+
+    cir::StatementIdx parseScope(const UHDM::scope& scope);
+
+    cir::StatementIdx parseAtomicStmt(const UHDM::atomic_stmt& scope);
+
+    void parseSensitivityList(const UHDM::any* condition, std::vector<cir::SensitivityListElement> &result);
 
     cir::ProcessIdx parseContinuousAssignment(const UHDM::cont_assign& assign);
 

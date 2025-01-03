@@ -40,8 +40,14 @@ void CirPrinter::printProcess(cir::Ast& ast, const cir::Process& process) {
 
     printIndent();
     std::cout << "(sensitive";
-    for (auto signal_idx : process.sensitivityList()) {
-        auto& signal = ast.getNode(signal_idx);
+    for (auto element : process.sensitivityList()) {
+        if (element.kind == cir::SensitivityKind::Negedge) {
+            std::cout << " negedge";
+        } else if (element.kind == cir::SensitivityKind::Posedge) {
+            std::cout << " posedge";
+        }
+
+        auto& signal = ast.getNode(element.signal);
         std::cout << " " << signal.name();
     }
     std::cout << ")\n";
