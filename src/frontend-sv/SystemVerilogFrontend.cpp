@@ -110,7 +110,7 @@ void SystemVerilogFrontend::reportError(FrontendError& error,
     } break;
     case FrontendErrorKind::Other:
     default: {
-        spdlog::error("{} (line {}): {}", error.loc().line, error.message());
+        spdlog::error("{} (line {}): {}", filename, error.loc().line, error.message());
     } break;
     }
 }

@@ -3,6 +3,7 @@
 
 #include <iostream>
 #include <spdlog/spdlog.h>
+#include <string_view>
 
 namespace cudalator {
 CirPrinter::CirPrinter() : m_indent(0) {}
@@ -84,6 +85,19 @@ void CirPrinter::printStatement(cir::Ast& ast,
         std::cout << ")\n";
 
     } break;
+    case cir::StatementKind::NonBlockingAssignment: {
+        printIndent();
+        std::cout << "(assign_nonblock ";
+        auto& lhs = ast.getNode(statement.lhs());
+        auto& rhs = ast.getNode(statement.rhs());
+
+        printExpr(ast, lhs);
+        std::cout << " ";
+        printExpr(ast, rhs);
+
+        std::cout << ")\n";
+
+    } break;
     case cir::StatementKind::Block: {
         printIndent();
         std::cout << "(block \n";
@@ -93,6 +107,41 @@ void CirPrinter::printStatement(cir::Ast& ast,
             auto& sub_stmt = ast.getNode(sub_idx);
             printStatement(ast, sub_stmt);
         }
+        m_indent--;
+
+        printIndent();
+        std::cout << ")\n";
+
+    } break;
+    case cir::StatementKind::If: {
+        printIndent();
+        std::cout << "(if ";
+        auto& cond = ast.getNode(statement.lhs());
+        printExpr(ast, cond);
+        std::cout << "\n";
+
+        auto& body = ast.getNode(statement.statements()[0]);
+        printStatement(ast, body);
+        printIndent();
+        std::cout << ")\n";
+
+    } break;
+    case cir::StatementKind::IfElse: {
+        printIndent();
+        std::cout << "(if ";
+        auto& cond = ast.getNode(statement.lhs());
+        printExpr(ast, cond);
+        std::cout << "\n";
+
+        auto& body = ast.getNode(statement.statements()[0]);
+        auto& else_stmt = ast.getNode(statement.statements()[1]);
+
+        printStatement(ast, body);
+        printIndent();
+        std::cout << "else (\n";
+
+        m_indent++;
+        printStatement(ast, else_stmt);
         m_indent--;
 
         printIndent();
@@ -135,8 +184,15 @@ void CirPrinter::printExpr(cir::Ast& ast, const cir::Expr& expr) {
 
     switch (expr.kind()) {
     case cir::ExprKind::SignalRef: {
-        auto& signal = ast.getNode(expr.signal());
-        std::cout << "(signal " << signal.name() << ")";
+        std::string_view name;
+        if (expr.signal().isValid()) {
+            auto& signal = ast.getNode(expr.signal());
+            name = signal.name();
+        } else {
+            name = "invalid";
+        }
+
+        std::cout << "(signal " << name << ")";
     } break;
 
     case cir::ExprKind::Constant: {

@@ -1,5 +1,6 @@
 module ff(
     input clk,
+    input rst,
     input d,
     output q
 );

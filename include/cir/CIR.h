@@ -385,6 +385,15 @@ enum class StatementKind {
     // statements[0..len-1]: child statements in order
     Block,
 
+    // lhs: condition, statements[0]: body
+    If,
+
+    // lhs: condition, statements[0]: body, statements[1]: else
+    IfElse,
+
+    // lhs: target, rhs: value
+    NonBlockingAssignment,
+
     // lhs: target, rhs: value
     Assignment,
 };

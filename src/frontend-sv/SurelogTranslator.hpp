@@ -30,7 +30,7 @@ public:
 
     cir::StatementIdx parseScope(const UHDM::scope& scope);
 
-    cir::StatementIdx parseAtomicStmt(const UHDM::atomic_stmt& scope);
+    cir::StatementIdx parseAtomicStmt(const UHDM::atomic_stmt& stmt);
 
     void parseSensitivityList(const UHDM::any* condition, std::vector<cir::SensitivityListElement> &result);
 
