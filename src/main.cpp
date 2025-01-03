@@ -1,6 +1,5 @@
 #include "Exceptions.hpp"
 #include "backend/Backend.hpp"
-#include "backend/CirPrinter.hpp"
 #include "frontend-sv/SystemVerilogFrontend.hpp"
 
 #include <cir/CIR.h>
@@ -9,7 +8,6 @@
 
 #include <iostream>
 #include <string>
-#include <string_view>
 #include <vector>
 
 int main(int argc, const char **argv) {

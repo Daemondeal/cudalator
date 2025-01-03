@@ -11,7 +11,7 @@
 
 #include "FrontendError.hpp"
 #include "cir/CIR.h"
-#include "uhdm/vpi_user.h"
+#include <uhdm/vpi_user.h>
 
 namespace cudalator {
 

@@ -2,7 +2,6 @@
 
 #include "GenericAst.h"
 #include <cstdint>
-#include <string>
 #include <string_view>
 #include <vector>
 
@@ -34,7 +33,21 @@ public:
 struct NodeBase {
 public:
     NodeBase(std::string_view name, Loc loc) : m_name(name), m_loc(loc) {}
+
     NodeBase() = delete;
+    NodeBase(const NodeBase& other) = delete;
+    NodeBase& operator=(const NodeBase& other) = delete;
+
+    NodeBase(NodeBase&& other) noexcept
+        : m_name(other.m_name), m_loc(other.m_loc) {}
+
+    NodeBase& operator=(NodeBase&& other) {
+        if (this != &other) {
+            m_name = other.m_name;
+            m_loc = other.m_loc;
+        }
+        return *this;
+    }
 
     const std::string_view& name() const {
         return m_name;
@@ -81,6 +94,17 @@ public:
 
     Type(TypeKind kind, TypeIdx subtype) : m_kind(kind), m_subtype(subtype) {}
 
+    // Remove copy constructor
+    Type() = delete;
+    Type(const Type& other) = delete;
+    Type& operator=(const Type& other) = delete;
+
+    // Need to define the move constructor manually since the
+    // copy constructor had to be deleted
+    Type(Type&& other)
+        : m_kind(other.m_kind), m_ranges(std::move(other.m_ranges)),
+          m_subtype(other.m_subtype) {}
+
     void addRange(Range range) {
         m_ranges.push_back(range);
     }
@@ -118,10 +142,28 @@ struct Signal : NodeBase {
 public:
     explicit Signal(std::string_view name, Loc loc, std::string_view full_name,
                     TypeIdx type, SignalDirection kind)
-        : NodeBase(name, loc), m_full_name(full_name), m_type(type),
+        : NodeBase(name, loc), m_type(type), m_full_name(full_name),
           m_direction(kind) {}
 
-    std::string_view fullName() {
+    Signal() = delete;
+    Signal(const Signal& other) = delete;
+    Signal& operator=(Signal& other) = delete;
+
+    Signal(Signal&& other) noexcept
+        : NodeBase(std::move(other)), m_type(other.m_type),
+          m_full_name(other.m_full_name), m_direction(other.m_direction) {}
+
+    Signal& operator=(Signal&& other) noexcept {
+        if (this != &other) {
+            NodeBase::operator=(std::move(other));
+            m_type = other.m_type;
+            m_full_name = other.m_full_name;
+            m_direction = other.m_direction;
+        }
+        return *this;
+    }
+
+    std::string_view fullName() const {
         return m_full_name;
     }
     TypeIdx type() const {
@@ -149,6 +191,14 @@ public:
         : NodeBase(name, loc), m_size(size) {}
     Constant(std::string_view name, Loc loc, uint32_t size, uint64_t value)
         : NodeBase(name, loc), m_size(size), m_value({value}) {}
+
+    Constant() = delete;
+    Constant(Constant& other) = delete;
+    Constant& operator=(Constant& other) = delete;
+
+    Constant(Constant&& other)
+        : NodeBase(std::move(other)), m_size(other.m_size),
+          m_value(std::move(other.m_value)) {}
 
     // TODO: There has to be a better way to do this
     void addValue(uint32_t val) {
@@ -238,6 +288,15 @@ public:
     Expr(std::string_view name, Loc loc, ExprKind kind)
         : NodeBase(name, loc), m_kind(kind) {}
 
+    Expr() = delete;
+    Expr(const Expr& other) = delete;
+    Expr& operator=(const Expr& other) = delete;
+
+    Expr(Expr&& other)
+        : NodeBase(std::move(other)), m_kind(other.m_kind),
+          m_exprs(std::move(other.m_exprs)), m_constant(other.m_constant),
+          m_signal(other.m_signal) {}
+
     ExprIdx lhs() const {
         return m_exprs[0];
     }
@@ -322,6 +381,10 @@ private:
 enum class StatementKind {
     Invalid,
 
+    // statements[0..len-1]: child statements in order
+    Block,
+
+    // lhs: target, rhs: value
     Assignment,
 };
 
@@ -333,6 +396,14 @@ public:
     Statement(std::string_view name, Loc loc, StatementKind kind, ExprIdx lhs,
               ExprIdx rhs)
         : NodeBase(name, loc), m_kind(kind), m_lhs(lhs), m_rhs(rhs) {}
+
+    Statement() = delete;
+    Statement(const Statement& other) = delete;
+    Statement& operator=(const Statement& other) = delete;
+
+    Statement(Statement&& other)
+        : NodeBase(std::move(other)), m_kind(other.m_kind), m_lhs(other.m_lhs),
+          m_rhs(other.m_rhs), m_statements(std::move(other.m_statements)) {}
 
     StatementKind kind() const {
         return m_kind;
@@ -363,26 +434,32 @@ private:
     std::vector<StatementIdx> m_statements;
 };
 
-
-enum class SensitivityKind : uint8_t {
-    OnChange,
-    Posedge,
-    Negedge
-};
+enum class SensitivityKind : uint8_t { OnChange, Posedge, Negedge };
 
 struct SensitivityListElement {
 public:
-    SensitivityListElement(SignalIdx signal, SensitivityKind kind) : kind(kind), signal(signal) {}
+    SensitivityListElement(SignalIdx signal, SensitivityKind kind)
+        : kind(kind), signal(signal) {}
 
     SensitivityKind kind;
     SignalIdx signal;
-
 };
 
 struct Process : NodeBase {
 public:
     Process(std::string_view name, Loc loc, StatementIdx statement)
         : NodeBase(name, loc), m_statement(statement) {}
+
+    Process() = delete;
+    Process(const Process& other) = delete;
+    Process& operator=(const Process& other) = delete;
+
+    Process(Process&& other)
+        : NodeBase(std::move(other)),
+          m_sensitivity_list(std::move(other.m_sensitivity_list)),
+          m_statement(other.m_statement),
+          m_should_populate_sensitivity_list(
+              other.m_should_populate_sensitivity_list) {}
 
     const std::vector<SensitivityListElement>& sensitivityList() const {
         return m_sensitivity_list;
@@ -396,7 +473,8 @@ public:
         m_sensitivity_list.emplace_back(signal, kind);
     }
 
-    void setSensitivityList(std::vector<SensitivityListElement> &&sensitivityList) {
+    void
+    setSensitivityList(std::vector<SensitivityListElement>&& sensitivityList) {
         m_sensitivity_list = std::move(sensitivityList);
     }
 
@@ -418,6 +496,14 @@ private:
 struct Module : NodeBase {
 public:
     Module(std::string_view name, Loc loc) : NodeBase(name, loc) {}
+
+    Module() = delete;
+    Module(const Module& other) = delete;
+    Module& operator=(const Module& other) = delete;
+
+    Module(Module&& other)
+        : NodeBase(std::move(other)), m_signals(std::move(other.m_signals)),
+          m_processes(std::move(other.m_processes)) {}
 
     void addSignal(SignalIdx signal) {
         m_signals.push_back(signal);
@@ -456,7 +542,7 @@ public:
     }
 
     SignalIdx findSignal(std::string_view full_name) {
-        auto signal_vec = getNodeVector<Signal>();
+        auto& signal_vec = getNodeVector<Signal>();
         return signal_vec.findByFullName(full_name);
     }
 

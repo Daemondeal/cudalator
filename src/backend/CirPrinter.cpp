@@ -74,13 +74,29 @@ void CirPrinter::printStatement(cir::Ast& ast,
     case cir::StatementKind::Assignment: {
         printIndent();
         std::cout << "(assign ";
-        auto lhs = ast.getNode(statement.lhs());
-        auto rhs = ast.getNode(statement.rhs());
+        auto& lhs = ast.getNode(statement.lhs());
+        auto& rhs = ast.getNode(statement.rhs());
 
         printExpr(ast, lhs);
         std::cout << " ";
         printExpr(ast, rhs);
 
+        std::cout << ")\n";
+
+    } break;
+    case cir::StatementKind::Block: {
+        printIndent();
+        std::cout << "(block \n";
+
+        spdlog::info("block has {} stmts", statement.statements().size());
+        m_indent++;
+        for (auto sub_idx : statement.statements()) {
+            auto& sub_stmt = ast.getNode(sub_idx);
+            printStatement(ast, sub_stmt);
+        }
+        m_indent--;
+
+        printIndent();
         std::cout << ")\n";
 
     } break;
@@ -97,7 +113,7 @@ void CirPrinter::printExpr(cir::Ast& ast, const cir::Expr& expr) {
         printUnaryOp(expr.kind());
 
         std::cout << " ";
-        auto &operand = ast.getNode(expr.expr(0));
+        auto& operand = ast.getNode(expr.expr(0));
         printExpr(ast, operand);
         std::cout << ")";
         return;
@@ -108,8 +124,8 @@ void CirPrinter::printExpr(cir::Ast& ast, const cir::Expr& expr) {
         printBinaryOp(expr.kind());
 
         std::cout << " ";
-        auto &lhs = ast.getNode(expr.lhs());
-        auto &rhs = ast.getNode(expr.rhs());
+        auto& lhs = ast.getNode(expr.lhs());
+        auto& rhs = ast.getNode(expr.rhs());
 
         printExpr(ast, lhs);
         std::cout << " ";
@@ -120,20 +136,20 @@ void CirPrinter::printExpr(cir::Ast& ast, const cir::Expr& expr) {
 
     switch (expr.kind()) {
     case cir::ExprKind::SignalRef: {
-        auto signal = ast.getNode(expr.signal());
+        auto& signal = ast.getNode(expr.signal());
         std::cout << "(signal " << signal.name() << ")";
     } break;
 
     case cir::ExprKind::Constant: {
         // TODO: This has to be handled better
-        auto constant = ast.getNode(expr.constant());
+        auto& constant = ast.getNode(expr.constant());
         std::cout << "(constant " << constant.value() << ")";
     } break;
 
     case cir::ExprKind::PartSelect: {
-        auto signal = ast.getNode(expr.signal());
-        auto lhs = ast.getNode(expr.lhs());
-        auto rhs = ast.getNode(expr.rhs());
+        auto& signal = ast.getNode(expr.signal());
+        auto& lhs = ast.getNode(expr.lhs());
+        auto& rhs = ast.getNode(expr.rhs());
 
         std::cout << "(select " << signal.name() << " ";
         printExpr(ast, lhs);
@@ -143,9 +159,9 @@ void CirPrinter::printExpr(cir::Ast& ast, const cir::Expr& expr) {
     } break;
 
     case cir::ExprKind::BitSelect: {
-        auto signal = ast.getNode(expr.signal());
-        auto expr_idx = expr.exprs()[0];
-        auto idx = ast.getNode(expr_idx);
+        auto& signal = ast.getNode(expr.signal());
+        auto& expr_idx = expr.exprs()[0];
+        auto& idx = ast.getNode(expr_idx);
 
         std::cout << "(select_bit " << signal.name() << " ";
         printExpr(ast, idx);
@@ -181,7 +197,7 @@ void CirPrinter::printSignal(cir::Ast& ast, const cir::Signal& signal) {
     auto type_idx = signal.type();
 
     if (type_idx.isValid()) {
-        auto type = ast.getNode(type_idx);
+        auto& type = ast.getNode(type_idx);
         printType(ast, type);
     }
 
@@ -189,6 +205,8 @@ void CirPrinter::printSignal(cir::Ast& ast, const cir::Signal& signal) {
 }
 
 void CirPrinter::printType(cir::Ast& ast, const cir::Type& type) {
+    (void)ast;
+
     auto kind = type.kind();
 
     switch (kind) {
@@ -200,6 +218,9 @@ void CirPrinter::printType(cir::Ast& ast, const cir::Type& type) {
     } break;
     case cir::TypeKind::Integer: {
         std::cout << " integer";
+    } break;
+    case cir::TypeKind::Invalid: {
+        std::cout << " invalid";
     } break;
     }
 
@@ -314,7 +335,7 @@ void CirPrinter::printBinaryOp(const cir::ExprKind kind) {
 }
 
 void CirPrinter::printIndent() {
-    for (int i = 0; i < m_indent; i++) {
+    for (size_t i = 0; i < m_indent; i++) {
         std::cout << " ";
     }
 }

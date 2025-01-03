@@ -26,6 +26,8 @@ public:
 
     cir::ProcessIdx parseAlways(const UHDM::always& proc);
 
+    cir::StatementIdx parseStatement(const UHDM::any *statement);
+
     cir::StatementIdx parseScope(const UHDM::scope& scope);
 
     cir::StatementIdx parseAtomicStmt(const UHDM::atomic_stmt& scope);

@@ -5,23 +5,9 @@
 
 #include "FrontendError.hpp"
 #include "cir/CIR.h"
-#include "uhdm/BaseClass.h"
-#include "uhdm/always.h"
-#include "uhdm/bit_select.h"
-#include "uhdm/bit_typespec.h"
-#include "uhdm/constant.h"
-#include "uhdm/cont_assign.h"
-#include "uhdm/containers.h"
-#include "uhdm/event_control.h"
-#include "uhdm/if_stmt.h"
-#include "uhdm/integer_typespec.h"
-#include "uhdm/logic_typespec.h"
-#include "uhdm/part_select.h"
-#include "uhdm/ref_obj.h"
-#include "uhdm/scope.h"
-#include "uhdm/sv_vpi_user.h"
-#include "uhdm/vpi_user.h"
 #include "utils.hpp"
+
+#include <uhdm/uhdm.h>
 #include <charconv>
 #include <spdlog/spdlog.h>
 #include <string_view>
@@ -169,8 +155,6 @@ cir::ProcessIdx SurelogTranslator::parseAlways(const UHDM::always& proc) {
 
     auto type = proc.VpiAlwaysType();
 
-    auto statement = nullptr;
-
     // All processes should have at least one statement
     CD_ASSERT_NONNULL(proc.Stmt());
 
@@ -183,21 +167,11 @@ cir::ProcessIdx SurelogTranslator::parseAlways(const UHDM::always& proc) {
         stmt = event_control->Stmt();
     }
 
-    cir::StatementIdx ast_stmt;
-
-    if (auto scope = dynamic_cast<const UHDM::scope *>(stmt)) {
-        ast_stmt = parseScope(*scope);
-    } else if (auto atomic_stmt =
-                   dynamic_cast<const UHDM::atomic_stmt *>(stmt)) {
-        ast_stmt = parseAtomicStmt(*atomic_stmt);
-    } else {
-        CD_UNREACHABLE("Statement is neither a scope nor an atomic stmt");
-    }
+    auto ast_stmt = parseStatement(stmt);
 
     auto proc_idx = m_ast.emplaceNode<cir::Process>(name, loc, ast_stmt);
-    auto &ast_proc = m_ast.getNode(proc_idx);
+    auto& ast_proc = m_ast.getNode(proc_idx);
     ast_proc.setSensitivityList(std::move(sensitivity));
-
 
     if (type == vpiAlwaysComb) {
         ast_proc.setShouldPopulateSensitivityList(true);
@@ -222,7 +196,7 @@ void SurelogTranslator::parseSensitivityList(
             }
         } else if (op_type == vpiNegedgeOp || op_type == vpiPosedgeOp) {
             auto kind = op_type == vpiNegedgeOp ? cir::SensitivityKind::Negedge
-                                              : cir::SensitivityKind::Posedge;
+                                                : cir::SensitivityKind::Posedge;
 
             auto operands = op->Operands();
             CD_ASSERT_NONNULL(operands);
@@ -239,10 +213,24 @@ void SurelogTranslator::parseSensitivityList(
         }
     } else if (ref) {
         auto signal = getSignalFromRef(*ref);
-        auto elem = cir::SensitivityListElement(signal, cir::SensitivityKind::OnChange);
+        auto elem =
+            cir::SensitivityListElement(signal, cir::SensitivityKind::OnChange);
         result.push_back(elem);
     } else {
-        CD_UNREACHABLE("Sensitivity list element was neither an op nor a ref_obj");
+        CD_UNREACHABLE(
+            "Sensitivity list element was neither an op nor a ref_obj");
+    }
+}
+
+cir::StatementIdx SurelogTranslator::parseStatement(const UHDM::any *statement) {
+    if (auto scope = dynamic_cast<const UHDM::scope *>(statement)) {
+        return parseScope(*scope);
+    } else if (auto atomic_stmt =
+                   dynamic_cast<const UHDM::atomic_stmt *>(statement)) {
+        return parseAtomicStmt(*atomic_stmt);
+    } else {
+        CD_UNREACHABLE("Statement is neither a scope nor an atomic stmt");
+        return cir::StatementIdx::null();
     }
 }
 
@@ -250,11 +238,34 @@ cir::StatementIdx SurelogTranslator::parseScope(const UHDM::scope& scope) {
     auto name = scope.VpiName();
     auto loc = getLocFromVpi(scope);
 
-    auto kind = cir::StatementKind::Invalid;
+    cir::StatementIdx ast_stmt;
 
-    auto ast_stmt = m_ast.emplaceNode<cir::Statement>(name, loc, kind);
+    const UHDM::scope *scope_ptr = &scope;
 
-    spdlog::warn("todo: parseScope");
+    if (auto begin = dynamic_cast<const UHDM::begin *>(scope_ptr)) {
+        ast_stmt = m_ast.emplaceNode<cir::Statement>(name, loc, cir::StatementKind::Block);
+        auto &stmt = m_ast.getNode(ast_stmt);
+
+        if (begin->Stmts()) {
+            for (auto statement : *begin->Stmts()) {
+                spdlog::info("Adding statement");
+                stmt.addStatement(parseStatement(statement));
+            }
+        }
+        spdlog::info("block has {} stmts", stmt.statements().size());
+    } else if (auto named_begin =
+                   dynamic_cast<const UHDM::named_begin *>(scope_ptr)) {
+        ast_stmt = m_ast.emplaceNode<cir::Statement>(name, loc, cir::StatementKind::Block);
+        auto &stmt = m_ast.getNode(ast_stmt);
+
+        if (begin->Stmts()) {
+            for (auto statement : *begin->Stmts()) {
+                stmt.addStatement(parseStatement(statement));
+            }
+        }
+    }
+
+
     return ast_stmt;
 }
 
@@ -291,7 +302,7 @@ SurelogTranslator::parseTypespec(const UHDM::ref_typespec& typespec,
         kind = cir::TypeKind::Invalid;
     }
 
-    auto type_idx = m_ast.addNode<cir::Type>(kind);
+    auto type_idx = m_ast.emplaceNode<cir::Type>(kind);
     auto& type = m_ast.getNode(type_idx);
 
     // Ranges

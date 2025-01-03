@@ -6,7 +6,7 @@ namespace cudalator {
 void PopulateSensitivityList::runPass() {
     spdlog::debug("Running pass PopulateSensitivityList");
 
-    auto top = m_ast.getTopModule();
+    auto &top = m_ast.getTopModule();
     for (auto process_idx : top.processes()) {
         auto& process = m_ast.getNode(process_idx);
         if (process.shouldPopulateSensitivityList()) {

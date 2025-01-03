@@ -44,17 +44,11 @@ public:
         return m_storage[index.idx];
     }
 
-    NodeIndex<Node> add(const Node& node) {
-        NodeIndex<Node> new_index(m_storage.size());
-        m_storage.push_back(node);
-
-        return new_index;
-    }
-
     // NOTE: This only works for cir::Signal
     NodeIndex<Node> findByFullName(std::string_view full_name) {
-        for (int i = 0; i < m_storage.size(); i++){
-            if (m_storage[i].fullName() == full_name) {
+        for (size_t i = 0; i < m_storage.size(); i++){
+            auto &it = m_storage[i];
+            if (it.fullName() == full_name) {
                 return NodeIndex<Node>(i);
             }
         }
@@ -91,12 +85,6 @@ struct GenericAst {
     bool existsWithName(std::string_view name) {
         auto& node_vector = getNodeVector<Node>();
         return node_vector.existsWithName(name);
-    }
-
-    template <typename Node>
-    NodeIndex<Node> addNode(const Node& node) {
-        auto& node_vector = getNodeVector<Node>();
-        return node_vector.add(node);
     }
 
     template <typename Node, typename... Args>
