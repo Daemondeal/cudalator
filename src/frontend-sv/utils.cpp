@@ -11,9 +11,8 @@ cir::ExprKind vpiUnaryOp(uint32_t op_t) {
         return cir::ExprKind::UnaryPlus;
     case vpiNotOp:
         return cir::ExprKind::Not;
-    case vpiBitNegOp: // FIXME: Check what this is
-        spdlog::warn("vpiBitNegOp found");
-        return cir::ExprKind::Not;
+    case vpiBitNegOp:
+        return cir::ExprKind::BinaryNegation;
     case vpiUnaryAndOp:
         return cir::ExprKind::ReductionAnd;
     case vpiUnaryNandOp:

@@ -293,6 +293,9 @@ void CirPrinter::printUnaryOp(const cir::ExprKind kind) {
         std::cout << "+";
         break;
     case cir::ExprKind::Not:
+        std::cout << "!";
+        break;
+    case cir::ExprKind::BinaryNegation:
         std::cout << "~";
         break;
     case cir::ExprKind::ReductionAnd:

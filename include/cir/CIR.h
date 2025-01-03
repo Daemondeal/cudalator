@@ -226,6 +226,7 @@ enum class ExprKind {
     UnaryMinus,
     UnaryPlus,
     Not,
+    BinaryNegation,
     ReductionAnd,
     ReductionNand,
     ReductionOr,
@@ -335,6 +336,7 @@ public:
         return (m_kind == ExprKind::UnaryMinus) ||
                (m_kind == ExprKind::UnaryPlus) ||
                (m_kind == ExprKind::Not) ||
+               (m_kind == ExprKind::BinaryNegation) ||
                (m_kind == ExprKind::ReductionAnd) ||
                (m_kind == ExprKind::ReductionNand) ||
                (m_kind == ExprKind::ReductionOr) ||
