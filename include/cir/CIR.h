@@ -384,6 +384,12 @@ private:
 enum class StatementKind {
     Invalid,
 
+    // lhs: target, rhs: value
+    NonBlockingAssignment,
+
+    // lhs: target, rhs: value
+    Assignment,
+
     // statements[0..len-1]: child statements in order
     Block,
 
@@ -393,17 +399,43 @@ enum class StatementKind {
     // lhs: condition, statements[0]: body, statements[1]: else
     IfElse,
 
-    // lhs: target, rhs: value
-    NonBlockingAssignment,
+    // lhs: condition, statements[0]: body
+    While,
 
-    // lhs: target, rhs: value
-    Assignment,
+    // lhs: condition, statements[0]: body
+    Repeat,
+
+    // lhs: condition, statements[0]: init, statements[1]: increment
+    For,
+
+    // TODO: START
+    Case,
+    Foreach,
+    // TODO: END
+
+    // statements[0]: body
+    Forever,
+
+    // lhs: expr
+    Return,
+
+    // Nothing needed
+    Break,
+    Continue,
+    Null,
+
 };
 
 struct Statement : NodeBase {
 public:
     Statement(std::string_view name, Loc loc, StatementKind kind)
         : NodeBase(name, loc), m_kind(kind) {}
+
+    Statement(std::string_view name, Loc loc, StatementKind kind, StatementIdx body)
+        : NodeBase(name, loc), m_kind(kind), m_statements({body}) {}
+
+    Statement(std::string_view name, Loc loc, StatementKind kind, ExprIdx condition, StatementIdx body)
+        : NodeBase(name, loc), m_kind(kind), m_lhs(condition), m_statements({body}) {}
 
     Statement(std::string_view name, Loc loc, StatementKind kind, ExprIdx lhs,
               ExprIdx rhs)
@@ -427,6 +459,10 @@ public:
 
     ExprIdx rhs() const {
         return m_rhs;
+    }
+
+    const StatementIdx body() const {
+        return m_statements[0];
     }
 
     const std::vector<StatementIdx>& statements() const {

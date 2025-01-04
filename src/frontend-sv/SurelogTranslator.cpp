@@ -6,7 +6,10 @@
 #include "FrontendError.hpp"
 #include "cir/CIR.h"
 #include "uhdm/assignment.h"
+#include "uhdm/for_stmt.h"
+#include "uhdm/forever_stmt.h"
 #include "uhdm/if_stmt.h"
+#include "uhdm/null_stmt.h"
 #include "utils.hpp"
 
 #include <charconv>
@@ -273,6 +276,8 @@ cir::StatementIdx SurelogTranslator::parseScope(const UHDM::scope& scope) {
         }
     }
 
+    // TODO: Process for and foreach scopes
+
     return ast_stmt;
 }
 
@@ -282,6 +287,23 @@ SurelogTranslator::parseAtomicStmt(const UHDM::atomic_stmt& stmt) {
     auto loc = getLocFromVpi(stmt);
 
     auto *stmt_ptr = &stmt;
+
+    // NOTE: At the moment we're not supporting the following statements, described by the LRM:
+    //       - (waits)
+    //       - delay control
+    //       - event control
+    //       - event stmt
+    //       - assign stmt
+    //       - deassign
+    //       - (disables)
+    //       - (tf call)
+    //       - force
+    //       - release
+    //       - do while
+    //       - expect stmt
+    //       - immediate assert
+    //       - immediate assume
+    //       - immediate cover
 
     if (auto assign = dynamic_cast<const UHDM::assignment *>(stmt_ptr)) {
         CD_ASSERT_NONNULL(assign->Lhs());
@@ -306,7 +328,6 @@ SurelogTranslator::parseAtomicStmt(const UHDM::atomic_stmt& stmt) {
         auto condition = if_stmt->VpiCondition();
         CD_ASSERT_NONNULL(condition);
         auto ast_cond = parseExpr(*condition);
-        auto rhs = cir::ExprIdx::null();
 
         auto body = if_stmt->VpiStmt();
         CD_ASSERT_NONNULL(body);
@@ -314,15 +335,11 @@ SurelogTranslator::parseAtomicStmt(const UHDM::atomic_stmt& stmt) {
         auto ast_body = parseStatement(body);
 
         auto kind = cir::StatementKind::If;
-        auto stmt_idx =
-            m_ast.emplaceNode<cir::Statement>(name, loc, kind, ast_cond, rhs);
-        m_ast.getNode(stmt_idx).addStatement(ast_body);
-        return stmt_idx;
+        return m_ast.emplaceNode<cir::Statement>(name, loc, kind, ast_cond, ast_body);
     } else if (auto if_else = dynamic_cast<const UHDM::if_else *>(stmt_ptr)) {
         auto condition = if_else->VpiCondition();
         CD_ASSERT_NONNULL(condition);
         auto ast_cond = parseExpr(*condition);
-        auto rhs = cir::ExprIdx::null();
 
         auto body = if_else->VpiStmt();
         auto else_stmt = if_else->VpiElseStmt();
@@ -335,16 +352,125 @@ SurelogTranslator::parseAtomicStmt(const UHDM::atomic_stmt& stmt) {
 
         auto kind = cir::StatementKind::IfElse;
         auto stmt_idx =
-            m_ast.emplaceNode<cir::Statement>(name, loc, kind, ast_cond, rhs);
-        m_ast.getNode(stmt_idx).addStatement(ast_body);
+            m_ast.emplaceNode<cir::Statement>(name, loc, kind, ast_cond, ast_body);
         m_ast.getNode(stmt_idx).addStatement(ast_else);
         return stmt_idx;
+    } else if (auto while_stmt = dynamic_cast<const UHDM::while_stmt *>(stmt_ptr)) {
+        auto condition = while_stmt->VpiCondition();
+        CD_ASSERT_NONNULL(condition);
+
+        auto ast_cond = parseExpr(*condition);
+
+        auto body = while_stmt->VpiStmt();
+        CD_ASSERT_NONNULL(body);
+        auto ast_body = parseStatement(body);
+        auto kind = cir::StatementKind::While;
+
+        return m_ast.emplaceNode<cir::Statement>(name, loc, kind, ast_cond, ast_body);
+    } else if (auto repeat = dynamic_cast<const UHDM::repeat*>(stmt_ptr)) {
+        auto condition = repeat->VpiCondition();
+        CD_ASSERT_NONNULL(condition);
+        auto ast_cond = parseExpr(*condition);
+
+        auto body = repeat->VpiStmt();
+        CD_ASSERT_NONNULL(body);
+        auto ast_body = parseStatement(body);
+
+        auto kind = cir::StatementKind::Repeat;
+
+        return m_ast.emplaceNode<cir::Statement>(name, loc, kind, ast_cond, ast_body);
+    } else if (auto case_stmt = dynamic_cast<const UHDM::case_stmt*>(stmt_ptr)) {
+        // TODO: Figure this stuff out
+        (void)case_stmt;
+        throwErrorTodo("Case statements are unimplemented", loc);
+        auto kind = cir::StatementKind::Invalid;
+        return m_ast.emplaceNode<cir::Statement>(name, loc, kind);
+    } else if (auto for_stmt = dynamic_cast<const UHDM::for_stmt*>(stmt_ptr)) {
+        auto merge_multiple_stmts = [&](UHDM::VectorOfany *stmts) {
+            CD_ASSERT_NONNULL(stmts);
+            CD_ASSERT(stmts->size() > 0);
+
+            auto name = stmts->at(0)->VpiName();
+            auto loc = getLocFromVpi(*stmts->at(0));
+            auto block_idx = m_ast.emplaceNode<cir::Statement>(name, loc, cir::StatementKind::Block);
+
+            for (auto stmt : *stmts) {
+                auto ast_stmt = parseStatement(stmt);
+                m_ast.getNode(block_idx).addStatement(ast_stmt);
+            }
+
+            return block_idx;
+        };
+
+
+        auto cond = for_stmt->VpiCondition();
+        CD_ASSERT_NONNULL(cond);
+        auto ast_cond = parseExpr(*cond);
+
+        cir::StatementIdx ast_init;
+        cir::StatementIdx ast_incr;
+
+        auto inits = for_stmt->VpiForInitStmts();
+        if (inits) {
+            ast_init = merge_multiple_stmts(inits);
+        } else {
+            CD_ASSERT_NONNULL(for_stmt->VpiForInitStmt());
+            ast_init = parseStatement(for_stmt->VpiForInitStmt());
+        }
+
+        auto incrs = for_stmt->VpiForIncStmts();
+        if (incrs) {
+            ast_incr = merge_multiple_stmts(incrs);
+        } else {
+            CD_ASSERT_NONNULL(for_stmt->VpiForIncStmt());
+            ast_incr = parseStatement(for_stmt->VpiForIncStmt());
+        }
+
+        auto kind = cir::StatementKind::For;
+        auto ast_for = m_ast.emplaceNode<cir::Statement>(name, loc, kind, ast_cond, cir::StatementIdx::null());
+
+        m_ast.getNode(ast_for).addStatement(ast_init);
+        m_ast.getNode(ast_for).addStatement(ast_incr);
+
+    } else if (auto foreach = dynamic_cast<const UHDM::foreach_stmt*>(stmt_ptr)) {
+    } else if (auto forever = dynamic_cast<const UHDM::forever_stmt*>(stmt_ptr)) {
+        auto body = forever->VpiStmt();
+        CD_ASSERT_NONNULL(body);
+        auto ast_body = parseStatement(body);
+
+        auto kind = cir::StatementKind::Forever;
+
+        auto forever_idx = m_ast.emplaceNode<cir::Statement>(name, loc, kind, ast_body);
+        m_ast.getNode(forever_idx).addStatement(ast_body);
+        return forever_idx;
+    } else if (auto return_stmt = dynamic_cast<const UHDM::return_stmt*>(stmt_ptr)) {
+        auto condition = return_stmt->VpiCondition();
+        CD_ASSERT_NONNULL(condition);
+        auto ast_cond = parseExpr(*condition);
+        auto rhs = cir::ExprIdx::null();
+
+        auto kind = cir::StatementKind::Return;
+
+        return m_ast.emplaceNode<cir::Statement>(name, loc, kind, ast_cond, rhs);
+    } else if (auto break_stmt = dynamic_cast<const UHDM::break_stmt*>(stmt_ptr)) {
+        (void)break_stmt;
+        auto kind = cir::StatementKind::Break;
+        return m_ast.emplaceNode<cir::Statement>(name, loc, kind);
+    } else if (auto continue_stmt = dynamic_cast<const UHDM::continue_stmt*>(stmt_ptr)) {
+        (void)continue_stmt;
+        auto kind = cir::StatementKind::Continue;
+        return m_ast.emplaceNode<cir::Statement>(name, loc, kind);
+    } else if (auto null_stmt = dynamic_cast<const UHDM::null_stmt*>(stmt_ptr)) {
+        (void)null_stmt;
+        auto kind = cir::StatementKind::Null;
+        return m_ast.emplaceNode<cir::Statement>(name, loc, kind);
     } else {
-        spdlog::error("Unimplemented statement kind at {}:{}", loc.line,
-                      loc.column);
-        return m_ast.emplaceNode<cir::Statement>(name, loc,
-                                                 cir::StatementKind::Invalid);
+        throwErrorUnsupported("Unimplemented statement kind", loc);
+        auto kind = cir::StatementKind::Invalid;
+        return m_ast.emplaceNode<cir::Statement>(name, loc, kind);
     }
+
+    return cir::StatementIdx::null();
 }
 
 cir::TypeIdx
