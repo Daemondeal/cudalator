@@ -6,6 +6,7 @@
 #include "FrontendError.hpp"
 #include "cir/CIR.h"
 #include "uhdm/assignment.h"
+#include "uhdm/do_while.h"
 #include "uhdm/for_stmt.h"
 #include "uhdm/forever_stmt.h"
 #include "uhdm/if_stmt.h"
@@ -365,6 +366,18 @@ SurelogTranslator::parseAtomicStmt(const UHDM::atomic_stmt& stmt) {
         CD_ASSERT_NONNULL(body);
         auto ast_body = parseStatement(body);
         auto kind = cir::StatementKind::While;
+
+        return m_ast.emplaceNode<cir::Statement>(name, loc, kind, ast_cond, ast_body);
+    } else if (auto do_while = dynamic_cast<const UHDM::do_while*>(stmt_ptr)) {
+        auto condition = do_while->VpiCondition();
+        CD_ASSERT_NONNULL(condition);
+
+        auto ast_cond = parseExpr(*condition);
+
+        auto body = do_while->VpiStmt();
+        CD_ASSERT_NONNULL(body);
+        auto ast_body = parseStatement(body);
+        auto kind = cir::StatementKind::DoWhile;
 
         return m_ast.emplaceNode<cir::Statement>(name, loc, kind, ast_cond, ast_body);
     } else if (auto repeat = dynamic_cast<const UHDM::repeat*>(stmt_ptr)) {

@@ -400,6 +400,7 @@ enum class StatementKind {
     IfElse,
 
     // lhs: condition, statements[0]: body
+    DoWhile,
     While,
 
     // lhs: condition, statements[0]: body
