@@ -1,6 +1,7 @@
 #include "SystemVerilogFrontend.hpp"
 
 #include <cstring>
+#include <filesystem>
 #include <memory>
 
 #include <Surelog/API/Surelog.h>
@@ -40,6 +41,17 @@ SystemVerilogFrontend::compileSvToCir(std::vector<std::string> sources,
     m_clp->setCompile(true);
     m_clp->setElaborate(true); // Request Surelog instance tree elaboration
     m_clp->setElabUhdm(true);  // Request UHDM Uniquification/Elaboration
+
+    bool all_exist = true;
+    for (auto source : sources) {
+        if (!std::filesystem::exists(source)) {
+            all_exist = false;
+            spdlog::error("Cannot find file \"{}\"", source);
+        }
+    }
+
+    if (!all_exist)
+        return nullptr;
 
     // NOTE(Pietro): A bit hacky but it's the easiest way I found
     //               to give it the input file
