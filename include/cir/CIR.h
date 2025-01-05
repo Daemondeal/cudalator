@@ -8,6 +8,9 @@
 
 namespace cir {
 
+struct Ast;
+
+struct Scope;
 struct Signal;
 struct Process;
 struct Module;
@@ -16,6 +19,7 @@ struct Statement;
 struct Expr;
 struct Constant;
 
+using ScopeIdx = NodeIndex<Scope>;
 using SignalIdx = NodeIndex<Signal>;
 using ProcessIdx = NodeIndex<Process>;
 using ModuleIdx = NodeIndex<Module>;
@@ -31,14 +35,37 @@ public:
     Loc(uint32_t line, uint32_t col) : line(line), column(col) {}
 };
 
+struct Ast : GenericAst<Signal, Process, Module, Expr, Statement, Type,
+                        Constant, Scope> {
+    using GenericAst::GenericAst;
+
+public:
+    Ast() : m_top_module() {}
+
+    const Module& getTopModule() const {
+        return getNode(m_top_module);
+    }
+
+    void setTopModule(ModuleIdx top_module) {
+        m_top_module = top_module;
+    }
+
+private:
+    ModuleIdx m_top_module;
+};
+
 struct NodeBase {
 public:
     NodeBase(std::string_view name, Loc loc) : m_name(name), m_loc(loc) {}
 
+    // Removing copy constructor since copying a node outside
+    // the ast is always unintended
     NodeBase() = delete;
     NodeBase(const NodeBase& other) = delete;
     NodeBase& operator=(const NodeBase& other) = delete;
 
+    // Need to define the move constructor manually since the
+    // copy constructor had to be deleted
     NodeBase(NodeBase&& other) noexcept
         : m_name(other.m_name), m_loc(other.m_loc) {}
 
@@ -87,6 +114,7 @@ enum class TypeKind {
     Bit,
     Logic,
     Integer,
+    Int,
 };
 
 struct Type {
@@ -95,13 +123,10 @@ public:
 
     Type(TypeKind kind, TypeIdx subtype) : m_kind(kind), m_subtype(subtype) {}
 
-    // Remove copy constructor
     Type() = delete;
     Type(const Type& other) = delete;
     Type& operator=(const Type& other) = delete;
 
-    // Need to define the move constructor manually since the
-    // copy constructor had to be deleted
     Type(Type&& other)
         : m_kind(other.m_kind), m_ranges(std::move(other.m_ranges)),
           m_subtype(other.m_subtype) {}
@@ -132,19 +157,18 @@ private:
     TypeIdx m_subtype;
 };
 
-enum class SignalDirection {
-    Internal,
-    Input,
-    Output,
-    Inout,
+enum class SignalLifetime {
+    Static,
+    Automatic,
+    Net,
 };
 
 struct Signal : NodeBase {
 public:
     explicit Signal(std::string_view name, Loc loc, std::string_view full_name,
-                    TypeIdx type, SignalDirection kind)
+                    TypeIdx type, SignalLifetime lifetime)
         : NodeBase(name, loc), m_type(type), m_full_name(full_name),
-          m_direction(kind) {}
+          m_lifetime(lifetime) {}
 
     Signal() = delete;
     Signal(const Signal& other) = delete;
@@ -152,17 +176,7 @@ public:
 
     Signal(Signal&& other) noexcept
         : NodeBase(std::move(other)), m_type(other.m_type),
-          m_full_name(other.m_full_name), m_direction(other.m_direction) {}
-
-    Signal& operator=(Signal&& other) noexcept {
-        if (this != &other) {
-            NodeBase::operator=(std::move(other));
-            m_type = other.m_type;
-            m_full_name = other.m_full_name;
-            m_direction = other.m_direction;
-        }
-        return *this;
-    }
+          m_full_name(other.m_full_name), m_lifetime(other.m_lifetime) {}
 
     std::string_view fullName() const {
         return m_full_name;
@@ -171,19 +185,15 @@ public:
         return m_type;
     }
 
-    SignalDirection direction() const {
-        return m_direction;
-    }
-
-    void setDirection(SignalDirection direction) {
-        m_direction = direction;
+    SignalLifetime lifetime() const {
+        return m_lifetime;
     }
 
 private:
     TypeIdx m_type;
 
     std::string_view m_full_name;
-    SignalDirection m_direction;
+    SignalLifetime m_lifetime;
 };
 
 struct Constant : NodeBase {
@@ -368,7 +378,6 @@ public:
                (m_kind == ExprKind::BitwiseXor) ||
                (m_kind == ExprKind::BitwiseXnor);
     }
-
     // clang-format on
 
 private:
@@ -390,7 +399,7 @@ enum class StatementKind {
     // lhs: target, rhs: value
     Assignment,
 
-    // statements[0..len-1]: child statements in order
+    // statements[0..len-1]: child statements in order, scope: variables scope
     Block,
 
     // lhs: condition, statements[0]: body
@@ -400,13 +409,14 @@ enum class StatementKind {
     IfElse,
 
     // lhs: condition, statements[0]: body
-    DoWhile,
     While,
+    DoWhile,
 
     // lhs: condition, statements[0]: body
     Repeat,
 
-    // lhs: condition, statements[0]: init, statements[1]: increment
+    // lhs: condition, statements[0]: init, statements[1]: increment,
+    // statements[2]: body
     For,
 
     // TODO: START
@@ -432,23 +442,26 @@ public:
     Statement(std::string_view name, Loc loc, StatementKind kind)
         : NodeBase(name, loc), m_kind(kind) {}
 
-    Statement(std::string_view name, Loc loc, StatementKind kind, StatementIdx body)
-        : NodeBase(name, loc), m_kind(kind), m_statements({body}) {}
-
-    Statement(std::string_view name, Loc loc, StatementKind kind, ExprIdx condition, StatementIdx body)
-        : NodeBase(name, loc), m_kind(kind), m_lhs(condition), m_statements({body}) {}
-
-    Statement(std::string_view name, Loc loc, StatementKind kind, ExprIdx lhs,
-              ExprIdx rhs)
-        : NodeBase(name, loc), m_kind(kind), m_lhs(lhs), m_rhs(rhs) {}
-
     Statement() = delete;
     Statement(const Statement& other) = delete;
     Statement& operator=(const Statement& other) = delete;
 
     Statement(Statement&& other)
         : NodeBase(std::move(other)), m_kind(other.m_kind), m_lhs(other.m_lhs),
-          m_rhs(other.m_rhs), m_statements(std::move(other.m_statements)) {}
+          m_rhs(other.m_rhs), m_scope(other.m_scope),
+          m_statements(std::move(other.m_statements)) {}
+
+    void setScope(ScopeIdx scope) {
+        m_scope = scope;
+    }
+
+    void setLhs(ExprIdx lhs) {
+        m_lhs = lhs;
+    }
+
+    void setRhs(ExprIdx rhs) {
+        m_rhs = rhs;
+    }
 
     StatementKind kind() const {
         return m_kind;
@@ -462,12 +475,20 @@ public:
         return m_rhs;
     }
 
-    const StatementIdx body() const {
+    ScopeIdx scope() const {
+        return m_scope;
+    }
+
+    StatementIdx body() const {
         return m_statements[0];
     }
 
     const std::vector<StatementIdx>& statements() const {
         return m_statements;
+    }
+
+    StatementIdx statement(size_t idx) const {
+        return m_statements[idx];
     }
 
     void addStatement(StatementIdx statement) {
@@ -479,6 +500,8 @@ private:
 
     ExprIdx m_lhs;
     ExprIdx m_rhs;
+
+    ScopeIdx m_scope;
 
     std::vector<StatementIdx> m_statements;
 };
@@ -542,28 +565,50 @@ private:
     bool m_should_populate_sensitivity_list = false;
 };
 
+enum class SignalDirection {
+    Input,
+    Output,
+    Inout,
+    Invalid,
+};
+
+struct ModulePort {
+public:
+    ModulePort(SignalIdx signal, SignalDirection direction)
+        : signal(signal), direction(direction) {}
+
+    SignalIdx signal;
+    SignalDirection direction;
+};
+
 struct Module : NodeBase {
 public:
-    Module(std::string_view name, Loc loc) : NodeBase(name, loc) {}
+    Module(std::string_view name, Loc loc, ScopeIdx scope)
+        : NodeBase(name, loc), m_scope(scope) {}
 
     Module() = delete;
     Module(const Module& other) = delete;
     Module& operator=(const Module& other) = delete;
 
     Module(Module&& other)
-        : NodeBase(std::move(other)), m_signals(std::move(other.m_signals)),
+        : NodeBase(std::move(other)), m_scope(other.m_scope),
+          m_ports(std::move(other.m_ports)),
           m_processes(std::move(other.m_processes)) {}
 
-    void addSignal(SignalIdx signal) {
-        m_signals.push_back(signal);
+    void addPort(ModulePort port) {
+        m_ports.push_back(port);
     }
 
     void addProcess(ProcessIdx proc) {
         m_processes.push_back(proc);
     }
 
-    const std::vector<SignalIdx>& signals() const {
-        return m_signals;
+    ScopeIdx scope() const {
+        return m_scope;
+    }
+
+    const std::vector<ModulePort>& ports() const {
+        return m_ports;
     }
 
     const std::vector<ProcessIdx>& processes() const {
@@ -571,32 +616,56 @@ public:
     }
 
 private:
-    std::vector<SignalIdx> m_signals;
+    ScopeIdx m_scope;
+
+    std::vector<ModulePort> m_ports;
     std::vector<ProcessIdx> m_processes;
 };
 
-struct Ast
-    : GenericAst<Signal, Process, Module, Expr, Statement, Type, Constant> {
-    using GenericAst::GenericAst;
-
+struct Scope : NodeBase {
 public:
-    Ast() : m_top_module() {}
+    Scope(std::string_view name, Loc loc, ScopeIdx parent)
+        : NodeBase(name, loc), m_parent(parent), m_signals({}) {}
 
-    const Module& getTopModule() const {
-        return getNode(m_top_module);
+    Scope() = delete;
+    Scope(const Scope& other) = delete;
+    Scope& operator=(const Scope& other) = delete;
+
+    Scope(Scope&& other)
+        : NodeBase(std::move(other)), m_parent(other.m_parent),
+          m_signals(std::move(other.m_signals)) {}
+
+    ScopeIdx parent() const {
+        return m_parent;
     }
 
-    void setTopModule(ModuleIdx top_module) {
-        m_top_module = top_module;
+    const std::vector<SignalIdx>& signals() const {
+        return m_signals;
     }
 
-    SignalIdx findSignal(std::string_view full_name) {
-        auto& signal_vec = getNodeVector<Signal>();
-        return signal_vec.findByFullName(full_name);
+    void addSignal(SignalIdx signal) {
+        m_signals.push_back(signal);
+    }
+
+    SignalIdx findSignalByName(Ast& ast, std::string_view full_name) const {
+        for (auto idx : m_signals) {
+            auto& signal = ast.getNode(idx);
+            if (signal.fullName() == full_name) {
+                return idx;
+            }
+        }
+
+        if (m_parent.isValid()) {
+            return ast.getNode(m_parent).findSignalByName(ast, full_name);
+        }
+
+        return SignalIdx::null();
     }
 
 private:
-    ModuleIdx m_top_module;
+    ScopeIdx m_parent;
+
+    std::vector<SignalIdx> m_signals;
 };
 
 } // namespace cir

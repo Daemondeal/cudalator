@@ -2,12 +2,7 @@
 
 #include "FrontendError.hpp"
 #include "cir/CIR.h"
-#include "uhdm/atomic_stmt.h"
-#include "uhdm/cont_assign.h"
-#include "uhdm/ref_obj.h"
-#include "uhdm/ref_typespec.h"
-#include "uhdm/scope.h"
-#include "uhdm/variables.h"
+
 #include <string_view>
 #include <uhdm/uhdm.h>
 
@@ -18,7 +13,7 @@ public:
 
     cir::ModuleIdx parseModule(const UHDM::module_inst& module);
 
-    void parsePort(const UHDM::port& port);
+    cir::ModulePort parsePort(const UHDM::port& port);
 
     cir::SignalIdx parseNet(const UHDM::net& net);
 
@@ -46,6 +41,8 @@ public:
 private:
     cir::Ast& m_ast;
     std::vector<FrontendError> m_errors;
+
+    cir::ScopeIdx m_current_scope;
 
     cir::SignalIdx getSignalFromRef(const UHDM::ref_obj& ref);
 

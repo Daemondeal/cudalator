@@ -20,5 +20,7 @@ private:
     void processExpr(cir::Expr& expr);
 
     std::set<cir::SignalIdx> m_collected_signals;
+
+    cir::ScopeIdx m_current_scope;
 };
 } // namespace cudalator

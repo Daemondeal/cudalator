@@ -6,7 +6,12 @@ namespace cudalator {
 void PopulateSensitivityList::runPass() {
     spdlog::debug("Running pass PopulateSensitivityList");
 
-    auto &top = m_ast.getTopModule();
+
+    auto& top = m_ast.getTopModule();
+    // NOTE: We only care about variables in the module's scope, so we never 
+    //       actually need to update m_current_scope with any block's scope.
+    m_current_scope = top.scope();
+
     for (auto process_idx : top.processes()) {
         auto& process = m_ast.getNode(process_idx);
         if (process.shouldPopulateSensitivityList()) {
@@ -41,7 +46,8 @@ void PopulateSensitivityList::processStatement(cir::Statement& statement) {
     // TODO: Check if there are more statement kinds that have a "left side"
     //       that should not be inside a sensitivity list
     if (statement.lhs().isValid() &&
-        statement.kind() != cir::StatementKind::Assignment) {
+        statement.kind() != cir::StatementKind::Assignment &&
+        statement.kind() != cir::StatementKind::NonBlockingAssignment) {
         auto& lhs = m_ast.getNode(statement.lhs());
         processExpr(lhs);
     }
@@ -53,7 +59,8 @@ void PopulateSensitivityList::processStatement(cir::Statement& statement) {
 }
 
 void PopulateSensitivityList::processExpr(cir::Expr& expr) {
-    // NOTE: Not really sure if this is correct, but it should work for now
+    // NOTE: There might be signals found that cannot be found, those are signals
+    //       outside the block's scope so we don't care.
     if (expr.signal().isValid()) {
         m_collected_signals.insert(expr.signal());
     }

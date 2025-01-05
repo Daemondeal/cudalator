@@ -15,15 +15,49 @@ void CirPrinter::printAst(cir::Ast& ast) {
     printModule(ast, ast.getTopModule());
 }
 
+void CirPrinter::printPort(cir::Ast& ast, const cir::ModulePort& port) {
+    auto& ast_signal = ast.getNode(port.signal);
+
+    printIndent();
+    std::cout << "(port " << ast_signal.name();
+
+    switch (port.direction) {
+    case cir::SignalDirection::Input: {
+        std::cout << " input";
+    } break;
+    case cir::SignalDirection::Output: {
+        std::cout << " output";
+    } break;
+    case cir::SignalDirection::Inout: {
+        std::cout << " inout";
+    } break;
+    case cir::SignalDirection::Invalid: {
+        std::cout << " invalid";
+    } break;
+    }
+
+    std::cout << ")\n";
+}
+
 void CirPrinter::printModule(cir::Ast& ast, const cir::Module& module) {
     std::cout << "(module " << module.name() << "\n";
 
     m_indent++;
-    for (auto signal_idx : module.signals()) {
-        auto& signal = ast.getNode(signal_idx);
+    printIndent();
+    std::cout << "(ports\n";
 
-        printSignal(ast, signal);
+    m_indent++;
+    for (auto port : module.ports()) {
+        printPort(ast, port);
     }
+
+    printIndent();
+    std::cout << ")\n";
+    m_indent--;
+
+    m_indent++;
+    printScope(ast, ast.getNode(module.scope()));
+    m_indent--;
 
     for (auto process_idx : module.processes()) {
         auto& process = ast.getNode(process_idx);
@@ -34,11 +68,18 @@ void CirPrinter::printModule(cir::Ast& ast, const cir::Module& module) {
     std::cout << ")\n";
 }
 
+void CirPrinter::printScope(cir::Ast& ast, const cir::Scope& scope) {
+    for (auto signal_idx : scope.signals()) {
+        auto& signal = ast.getNode(signal_idx);
+
+        printSignal(ast, signal);
+    }
+}
+
 void CirPrinter::printProcess(cir::Ast& ast, const cir::Process& process) {
     printIndent();
     std::cout << "(process " << process.name() << "\n";
     m_indent++;
-
     printIndent();
     std::cout << "(sensitive";
     for (auto element : process.sensitivityList()) {
@@ -103,6 +144,11 @@ void CirPrinter::printStatement(cir::Ast& ast,
         std::cout << "(block \n";
 
         m_indent++;
+        if (statement.scope().isValid()) {
+            auto& scope = ast.getNode(statement.scope());
+            printScope(ast, scope);
+        }
+
         for (auto sub_idx : statement.statements()) {
             auto& sub_stmt = ast.getNode(sub_idx);
             printStatement(ast, sub_stmt);
@@ -120,8 +166,10 @@ void CirPrinter::printStatement(cir::Ast& ast,
         printExpr(ast, cond);
         std::cout << "\n";
 
-        auto& body = ast.getNode(statement.statements()[0]);
+        auto& body = ast.getNode(statement.body());
+        m_indent++;
         printStatement(ast, body);
+        m_indent--;
         printIndent();
         std::cout << ")\n";
 
@@ -133,10 +181,12 @@ void CirPrinter::printStatement(cir::Ast& ast,
         printExpr(ast, cond);
         std::cout << "\n";
 
-        auto& body = ast.getNode(statement.statements()[0]);
-        auto& else_stmt = ast.getNode(statement.statements()[1]);
+        auto& body = ast.getNode(statement.statement(0));
+        auto& else_stmt = ast.getNode(statement.statement(1));
 
+        m_indent++;
         printStatement(ast, body);
+        m_indent--;
         printIndent();
         std::cout << "else (\n";
 
@@ -148,6 +198,111 @@ void CirPrinter::printStatement(cir::Ast& ast,
         std::cout << ")\n";
 
     } break;
+    case cir::StatementKind::While: {
+        printIndent();
+        std::cout << "(while ";
+        auto& cond = ast.getNode(statement.lhs());
+        printExpr(ast, cond);
+        std::cout << "\n";
+
+        auto& body = ast.getNode(statement.body());
+
+        m_indent++;
+        printStatement(ast, body);
+        m_indent--;
+        printIndent();
+        std::cout << ")\n";
+    } break;
+    case cir::StatementKind::DoWhile: {
+        printIndent();
+        std::cout << "(do\n";
+
+        auto& body = ast.getNode(statement.body());
+
+        m_indent++;
+        printStatement(ast, body);
+        m_indent--;
+
+        printIndent();
+        std::cout << "while ";
+        auto& cond = ast.getNode(statement.lhs());
+        printExpr(ast, cond);
+        std::cout << ")\n";
+    } break;
+    case cir::StatementKind::Repeat: {
+        printIndent();
+        std::cout << "(repeat ";
+        auto& cond = ast.getNode(statement.lhs());
+        printExpr(ast, cond);
+        std::cout << "\n";
+
+        auto& body = ast.getNode(statement.body());
+
+        m_indent++;
+        printStatement(ast, body);
+        m_indent--;
+        printIndent();
+        std::cout << ")\n";
+    } break;
+    case cir::StatementKind::For: {
+        printIndent();
+        std::cout << "(for\n";
+
+        m_indent++;
+        auto& init = ast.getNode(statement.statement(0));
+        printStatement(ast, init);
+
+        printIndent();
+        printExpr(ast, ast.getNode(statement.lhs()));
+
+        auto& incr = ast.getNode(statement.statement(1));
+        printStatement(ast, incr);
+
+        auto& body = ast.getNode(statement.statement(2));
+        printStatement(ast, body);
+        m_indent--;
+
+        printIndent();
+        std::cout << ")\n";
+    } break;
+
+    case cir::StatementKind::Forever: {
+        printIndent();
+        std::cout << "(forever\n";
+
+        m_indent++;
+        auto& body = ast.getNode(statement.body());
+        printStatement(ast, body);
+        m_indent--;
+
+        printIndent();
+        std::cout << ")\n";
+
+    } break;
+
+    case cir::StatementKind::Return: {
+        printIndent();
+        std::cout << "(return ";
+        auto& rval = ast.getNode(statement.lhs());
+        printExpr(ast, rval);
+        std::cout << ")\n";
+    } break;
+
+    case cir::StatementKind::Break: {
+        printIndent();
+        std::cout << "(break)\n";
+    } break;
+
+    case cir::StatementKind::Continue: {
+        printIndent();
+        std::cout << "(continue)\n";
+    } break;
+
+    case cir::StatementKind::Null: {
+        printIndent();
+        std::cout << "(null)\n";
+    } break;
+
     default: {
         printIndent();
         std::cout << "(unhandled statement)\n";
@@ -234,18 +389,15 @@ void CirPrinter::printSignal(cir::Ast& ast, const cir::Signal& signal) {
 
     std::cout << "(signal " << signal.name();
 
-    switch (signal.direction()) {
-    case cir::SignalDirection::Internal: {
-        std::cout << " internal";
+    switch (signal.lifetime()) {
+    case cir::SignalLifetime::Static: {
+        std::cout << " static";
     } break;
-    case cir::SignalDirection::Input: {
-        std::cout << " input";
+    case cir::SignalLifetime::Automatic: {
+        std::cout << " automatic";
     } break;
-    case cir::SignalDirection::Output: {
-        std::cout << " output";
-    } break;
-    case cir::SignalDirection::Inout: {
-        std::cout << " output";
+    case cir::SignalLifetime::Net: {
+        std::cout << " net";
     } break;
     }
 
@@ -273,6 +425,9 @@ void CirPrinter::printType(cir::Ast& ast, const cir::Type& type) {
     } break;
     case cir::TypeKind::Integer: {
         std::cout << " integer";
+    } break;
+    case cir::TypeKind::Int: {
+        std::cout << " int";
     } break;
     case cir::TypeKind::Invalid: {
         std::cout << " invalid";

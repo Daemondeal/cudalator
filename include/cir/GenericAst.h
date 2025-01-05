@@ -2,7 +2,6 @@
 
 #include <assert.h>
 #include <cstdint>
-#include <string_view>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -44,26 +43,6 @@ public:
         return m_storage[index.idx];
     }
 
-    // NOTE: This only works for cir::Signal
-    NodeIndex<Node> findByFullName(std::string_view full_name) {
-        for (size_t i = 0; i < m_storage.size(); i++){
-            auto &it = m_storage[i];
-            if (it.fullName() == full_name) {
-                return NodeIndex<Node>(i);
-            }
-        }
-        return NodeIndex<Node>::null();
-    }
-
-    bool existsWithName(std::string_view name) {
-        for (auto &item : m_storage) {
-            if (item.name() == name) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     template <typename... Args>
     NodeIndex<Node> emplace(Args&&...args) {
         NodeIndex<Node> new_index(m_storage.size());
@@ -80,12 +59,6 @@ struct GenericAst {
     std::tuple<NodeVector<Nodes>...> nodes;
 
     GenericAst() : nodes() {}
-
-    template <typename Node>
-    bool existsWithName(std::string_view name) {
-        auto& node_vector = getNodeVector<Node>();
-        return node_vector.existsWithName(name);
-    }
 
     template <typename Node, typename... Args>
     NodeIndex<Node> emplaceNode(Args&&...args) {

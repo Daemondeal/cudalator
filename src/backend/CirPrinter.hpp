@@ -9,6 +9,9 @@ public:
     CirPrinter();
     ~CirPrinter();
 
+    void printPort(cir::Ast& ast, const cir::ModulePort& port);
+
+
     void printAst(cir::Ast& ast);
     void printModule(cir::Ast& ast, const cir::Module& module);
     void printProcess(cir::Ast& ast, const cir::Process& process);
@@ -16,6 +19,7 @@ public:
     void printExpr(cir::Ast& ast, const cir::Expr& expr);
     void printSignal(cir::Ast& ast, const cir::Signal& signal);
     void printType(cir::Ast& ast, const cir::Type& type);
+    void printScope(cir::Ast& ast, const cir::Scope& scope);
 
     void printUnaryOp(const cir::ExprKind kind);
     void printBinaryOp(const cir::ExprKind kind);

@@ -5,12 +5,7 @@
 
 #include "FrontendError.hpp"
 #include "cir/CIR.h"
-#include "uhdm/assignment.h"
-#include "uhdm/do_while.h"
-#include "uhdm/for_stmt.h"
-#include "uhdm/forever_stmt.h"
-#include "uhdm/if_stmt.h"
-#include "uhdm/null_stmt.h"
+#include "uhdm/int_var.h"
 #include "utils.hpp"
 
 #include <charconv>
@@ -63,33 +58,38 @@ static int64_t evaluateConstant(std::string_view constant, cir::Loc loc) {
     return result;
 }
 
-SurelogTranslator::SurelogTranslator(cir::Ast& ast) : m_ast(ast) {}
+SurelogTranslator::SurelogTranslator(cir::Ast& ast)
+    : m_ast(ast), m_current_scope(cir::ScopeIdx::null()) {}
 
 cir::ModuleIdx SurelogTranslator::parseModule(const UHDM::module_inst& module) {
     auto name = module.VpiName();
     auto loc = getLocFromVpi(module);
 
-    auto mod_idx = m_ast.emplaceNode<cir::Module>(name, loc);
+    auto mod_scope = m_ast.emplaceNode<cir::Scope>(name, loc, m_current_scope);
+    auto mod_idx = m_ast.emplaceNode<cir::Module>(name, loc, mod_scope);
+
+    auto prev_scope = m_current_scope;
+    m_current_scope = mod_scope;
 
     if (module.Nets()) {
         for (auto net : *module.Nets()) {
             auto ast_net = parseNet(*net);
-            auto& ast_mod = m_ast.getNode(mod_idx);
-            ast_mod.addSignal(ast_net);
+
+            m_ast.getNode(m_current_scope).addSignal(ast_net);
         }
     }
 
     if (module.Variables()) {
         for (auto variable : *module.Variables()) {
             auto ast_variable = parseVariable(*variable);
-            auto& ast_mod = m_ast.getNode(mod_idx);
-            ast_mod.addSignal(ast_variable);
+            m_ast.getNode(m_current_scope).addSignal(ast_variable);
         }
     }
 
     if (module.Ports()) {
         for (auto port : *module.Ports()) {
-            parsePort(*port);
+            auto ast_port = parsePort(*port);
+            m_ast.getNode(mod_idx).addPort(ast_port);
         }
     }
 
@@ -124,10 +124,11 @@ cir::ModuleIdx SurelogTranslator::parseModule(const UHDM::module_inst& module) {
 
     // TODO: Add the rest
 
+    m_current_scope = prev_scope;
     return mod_idx;
 }
 
-void SurelogTranslator::parsePort(const UHDM::port& port) {
+cir::ModulePort SurelogTranslator::parsePort(const UHDM::port& port) {
     auto name = port.VpiName();
     auto loc = getLocFromVpi(port);
     auto direction = port.VpiDirection();
@@ -146,7 +147,7 @@ void SurelogTranslator::parsePort(const UHDM::port& port) {
     } break;
     default: {
         throwError(string_format("Invalid port type for port %s", name), loc);
-        return;
+        ast_direction = cir::SignalDirection::Invalid;
     } break;
     };
 
@@ -154,8 +155,8 @@ void SurelogTranslator::parsePort(const UHDM::port& port) {
     CD_ASSERT_NONNULL(low_conn);
 
     auto signal_idx = getSignalFromRef(*low_conn);
-    auto& signal = m_ast.getNode(signal_idx);
-    signal.setDirection(ast_direction);
+
+    return cir::ModulePort(signal_idx, ast_direction);
 }
 
 cir::ProcessIdx SurelogTranslator::parseAlways(const UHDM::always& proc) {
@@ -248,13 +249,24 @@ cir::StatementIdx SurelogTranslator::parseScope(const UHDM::scope& scope) {
     auto name = scope.VpiName();
     auto loc = getLocFromVpi(scope);
 
-    cir::StatementIdx ast_stmt;
-
     const UHDM::scope *scope_ptr = &scope;
 
     if (auto begin = dynamic_cast<const UHDM::begin *>(scope_ptr)) {
-        ast_stmt = m_ast.emplaceNode<cir::Statement>(name, loc,
-                                                     cir::StatementKind::Block);
+        auto ast_stmt = m_ast.emplaceNode<cir::Statement>(
+            name, loc, cir::StatementKind::Block);
+
+        auto prev_scope = m_current_scope;
+        auto scope = m_ast.emplaceNode<cir::Scope>(name, loc, m_current_scope);
+        m_current_scope = scope;
+
+        m_ast.getNode(ast_stmt).setScope(scope);
+
+        if (begin->Variables()) {
+            for (auto variable : *begin->Variables()) {
+                auto var_idx = parseVariable(*variable);
+                m_ast.getNode(m_current_scope).addSignal(var_idx);
+            }
+        }
 
         if (begin->Stmts()) {
             for (auto statement : *begin->Stmts()) {
@@ -263,10 +275,26 @@ cir::StatementIdx SurelogTranslator::parseScope(const UHDM::scope& scope) {
                 stmt.addStatement(parsed);
             }
         }
+
+        m_current_scope = prev_scope;
+        return ast_stmt;
     } else if (auto named_begin =
                    dynamic_cast<const UHDM::named_begin *>(scope_ptr)) {
-        ast_stmt = m_ast.emplaceNode<cir::Statement>(name, loc,
-                                                     cir::StatementKind::Block);
+        auto ast_stmt = m_ast.emplaceNode<cir::Statement>(
+            name, loc, cir::StatementKind::Block);
+
+        auto prev_scope = m_current_scope;
+        auto scope = m_ast.emplaceNode<cir::Scope>(name, loc, m_current_scope);
+        m_current_scope = scope;
+
+        m_ast.getNode(ast_stmt).setScope(scope);
+
+        if (named_begin->Variables()) {
+            for (auto variable : *named_begin->Variables()) {
+                auto var_idx = parseVariable(*variable);
+                m_ast.getNode(m_current_scope).addSignal(var_idx);
+            }
+        }
 
         if (named_begin->Stmts()) {
             for (auto statement : *named_begin->Stmts()) {
@@ -275,11 +303,15 @@ cir::StatementIdx SurelogTranslator::parseScope(const UHDM::scope& scope) {
                 stmt.addStatement(parsed);
             }
         }
+
+        m_current_scope = prev_scope;
+        return ast_stmt;
     }
 
     // TODO: Process for and foreach scopes
-
-    return ast_stmt;
+    throwErrorUnsupported("Unimplemented scope kind", loc);
+    auto kind = cir::StatementKind::Invalid;
+    return m_ast.emplaceNode<cir::Statement>(name, loc, kind);
 }
 
 cir::StatementIdx
@@ -289,7 +321,8 @@ SurelogTranslator::parseAtomicStmt(const UHDM::atomic_stmt& stmt) {
 
     auto *stmt_ptr = &stmt;
 
-    // NOTE: At the moment we're not supporting the following statements, described by the LRM:
+    // NOTE: At the moment we're not supporting the following statements,
+    // described by the LRM:
     //       - (waits)
     //       - delay control
     //       - event control
@@ -300,7 +333,6 @@ SurelogTranslator::parseAtomicStmt(const UHDM::atomic_stmt& stmt) {
     //       - (tf call)
     //       - force
     //       - release
-    //       - do while
     //       - expect stmt
     //       - immediate assert
     //       - immediate assume
@@ -324,7 +356,12 @@ SurelogTranslator::parseAtomicStmt(const UHDM::atomic_stmt& stmt) {
             kind = cir::StatementKind::NonBlockingAssignment;
         }
 
-        return m_ast.emplaceNode<cir::Statement>(name, loc, kind, lhs, rhs);
+        auto ast_stmt = m_ast.emplaceNode<cir::Statement>(name, loc, kind);
+
+        m_ast.getNode(ast_stmt).setLhs(lhs);
+        m_ast.getNode(ast_stmt).setRhs(rhs);
+
+        return ast_stmt;
     } else if (auto if_stmt = dynamic_cast<const UHDM::if_stmt *>(stmt_ptr)) {
         auto condition = if_stmt->VpiCondition();
         CD_ASSERT_NONNULL(condition);
@@ -336,7 +373,12 @@ SurelogTranslator::parseAtomicStmt(const UHDM::atomic_stmt& stmt) {
         auto ast_body = parseStatement(body);
 
         auto kind = cir::StatementKind::If;
-        return m_ast.emplaceNode<cir::Statement>(name, loc, kind, ast_cond, ast_body);
+        auto ast_stmt = m_ast.emplaceNode<cir::Statement>(name, loc, kind);
+
+        m_ast.getNode(ast_stmt).setLhs(ast_cond);
+        m_ast.getNode(ast_stmt).addStatement(ast_body);
+
+        return ast_stmt;
     } else if (auto if_else = dynamic_cast<const UHDM::if_else *>(stmt_ptr)) {
         auto condition = if_else->VpiCondition();
         CD_ASSERT_NONNULL(condition);
@@ -352,11 +394,16 @@ SurelogTranslator::parseAtomicStmt(const UHDM::atomic_stmt& stmt) {
         auto ast_else = parseStatement(else_stmt);
 
         auto kind = cir::StatementKind::IfElse;
-        auto stmt_idx =
-            m_ast.emplaceNode<cir::Statement>(name, loc, kind, ast_cond, ast_body);
-        m_ast.getNode(stmt_idx).addStatement(ast_else);
-        return stmt_idx;
-    } else if (auto while_stmt = dynamic_cast<const UHDM::while_stmt *>(stmt_ptr)) {
+
+        auto ast_stmt = m_ast.emplaceNode<cir::Statement>(name, loc, kind);
+
+        m_ast.getNode(ast_stmt).setLhs(ast_cond);
+        m_ast.getNode(ast_stmt).addStatement(ast_body);
+        m_ast.getNode(ast_stmt).addStatement(ast_else);
+
+        return ast_stmt;
+    } else if (auto while_stmt =
+                   dynamic_cast<const UHDM::while_stmt *>(stmt_ptr)) {
         auto condition = while_stmt->VpiCondition();
         CD_ASSERT_NONNULL(condition);
 
@@ -367,8 +414,13 @@ SurelogTranslator::parseAtomicStmt(const UHDM::atomic_stmt& stmt) {
         auto ast_body = parseStatement(body);
         auto kind = cir::StatementKind::While;
 
-        return m_ast.emplaceNode<cir::Statement>(name, loc, kind, ast_cond, ast_body);
-    } else if (auto do_while = dynamic_cast<const UHDM::do_while*>(stmt_ptr)) {
+        auto ast_stmt = m_ast.emplaceNode<cir::Statement>(name, loc, kind);
+
+        m_ast.getNode(ast_stmt).setLhs(ast_cond);
+        m_ast.getNode(ast_stmt).addStatement(ast_body);
+
+        return ast_stmt;
+    } else if (auto do_while = dynamic_cast<const UHDM::do_while *>(stmt_ptr)) {
         auto condition = do_while->VpiCondition();
         CD_ASSERT_NONNULL(condition);
 
@@ -379,8 +431,13 @@ SurelogTranslator::parseAtomicStmt(const UHDM::atomic_stmt& stmt) {
         auto ast_body = parseStatement(body);
         auto kind = cir::StatementKind::DoWhile;
 
-        return m_ast.emplaceNode<cir::Statement>(name, loc, kind, ast_cond, ast_body);
-    } else if (auto repeat = dynamic_cast<const UHDM::repeat*>(stmt_ptr)) {
+        auto ast_stmt = m_ast.emplaceNode<cir::Statement>(name, loc, kind);
+
+        m_ast.getNode(ast_stmt).setLhs(ast_cond);
+        m_ast.getNode(ast_stmt).addStatement(ast_body);
+
+        return ast_stmt;
+    } else if (auto repeat = dynamic_cast<const UHDM::repeat *>(stmt_ptr)) {
         auto condition = repeat->VpiCondition();
         CD_ASSERT_NONNULL(condition);
         auto ast_cond = parseExpr(*condition);
@@ -391,21 +448,28 @@ SurelogTranslator::parseAtomicStmt(const UHDM::atomic_stmt& stmt) {
 
         auto kind = cir::StatementKind::Repeat;
 
-        return m_ast.emplaceNode<cir::Statement>(name, loc, kind, ast_cond, ast_body);
-    } else if (auto case_stmt = dynamic_cast<const UHDM::case_stmt*>(stmt_ptr)) {
+        auto ast_stmt = m_ast.emplaceNode<cir::Statement>(name, loc, kind);
+
+        m_ast.getNode(ast_stmt).setLhs(ast_cond);
+        m_ast.getNode(ast_stmt).addStatement(ast_body);
+
+        return ast_stmt;
+    } else if (auto case_stmt =
+                   dynamic_cast<const UHDM::case_stmt *>(stmt_ptr)) {
         // TODO: Figure this stuff out
         (void)case_stmt;
         throwErrorTodo("Case statements are unimplemented", loc);
         auto kind = cir::StatementKind::Invalid;
         return m_ast.emplaceNode<cir::Statement>(name, loc, kind);
-    } else if (auto for_stmt = dynamic_cast<const UHDM::for_stmt*>(stmt_ptr)) {
+    } else if (auto for_stmt = dynamic_cast<const UHDM::for_stmt *>(stmt_ptr)) {
         auto merge_multiple_stmts = [&](UHDM::VectorOfany *stmts) {
             CD_ASSERT_NONNULL(stmts);
             CD_ASSERT(stmts->size() > 0);
 
             auto name = stmts->at(0)->VpiName();
             auto loc = getLocFromVpi(*stmts->at(0));
-            auto block_idx = m_ast.emplaceNode<cir::Statement>(name, loc, cir::StatementKind::Block);
+            auto block_idx = m_ast.emplaceNode<cir::Statement>(
+                name, loc, cir::StatementKind::Block);
 
             for (auto stmt : *stmts) {
                 auto ast_stmt = parseStatement(stmt);
@@ -414,7 +478,6 @@ SurelogTranslator::parseAtomicStmt(const UHDM::atomic_stmt& stmt) {
 
             return block_idx;
         };
-
 
         auto cond = for_stmt->VpiCondition();
         CD_ASSERT_NONNULL(cond);
@@ -439,51 +502,74 @@ SurelogTranslator::parseAtomicStmt(const UHDM::atomic_stmt& stmt) {
             ast_incr = parseStatement(for_stmt->VpiForIncStmt());
         }
 
+        auto body = for_stmt->VpiStmt();
+        CD_ASSERT_NONNULL(body);
+        auto ast_body = parseStatement(body);
+
         auto kind = cir::StatementKind::For;
-        auto ast_for = m_ast.emplaceNode<cir::Statement>(name, loc, kind, ast_cond, cir::StatementIdx::null());
+        auto ast_stmt = m_ast.emplaceNode<cir::Statement>(name, loc, kind);
 
-        m_ast.getNode(ast_for).addStatement(ast_init);
-        m_ast.getNode(ast_for).addStatement(ast_incr);
+        m_ast.getNode(ast_stmt).setLhs(ast_cond);
+        m_ast.getNode(ast_stmt).addStatement(ast_init);
+        m_ast.getNode(ast_stmt).addStatement(ast_incr);
+        m_ast.getNode(ast_stmt).addStatement(ast_body);
 
-    } else if (auto foreach = dynamic_cast<const UHDM::foreach_stmt*>(stmt_ptr)) {
-    } else if (auto forever = dynamic_cast<const UHDM::forever_stmt*>(stmt_ptr)) {
+        return ast_stmt;
+    } else if (auto foreach =
+                   dynamic_cast<const UHDM::foreach_stmt *>(stmt_ptr)) {
+        // TODO: Figure this stuff out
+        (void)foreach;
+        throwErrorTodo("Foreach statements are unimplemented", loc);
+        auto kind = cir::StatementKind::Invalid;
+        return m_ast.emplaceNode<cir::Statement>(name, loc, kind);
+    } else if (auto forever =
+                   dynamic_cast<const UHDM::forever_stmt *>(stmt_ptr)) {
         auto body = forever->VpiStmt();
         CD_ASSERT_NONNULL(body);
         auto ast_body = parseStatement(body);
 
         auto kind = cir::StatementKind::Forever;
 
-        auto forever_idx = m_ast.emplaceNode<cir::Statement>(name, loc, kind, ast_body);
-        m_ast.getNode(forever_idx).addStatement(ast_body);
-        return forever_idx;
-    } else if (auto return_stmt = dynamic_cast<const UHDM::return_stmt*>(stmt_ptr)) {
+        auto ast_stmt = m_ast.emplaceNode<cir::Statement>(name, loc, kind);
+
+        m_ast.getNode(ast_stmt).addStatement(ast_body);
+
+        return ast_stmt;
+    } else if (auto return_stmt =
+                   dynamic_cast<const UHDM::return_stmt *>(stmt_ptr)) {
         auto condition = return_stmt->VpiCondition();
         CD_ASSERT_NONNULL(condition);
         auto ast_cond = parseExpr(*condition);
-        auto rhs = cir::ExprIdx::null();
 
         auto kind = cir::StatementKind::Return;
 
-        return m_ast.emplaceNode<cir::Statement>(name, loc, kind, ast_cond, rhs);
-    } else if (auto break_stmt = dynamic_cast<const UHDM::break_stmt*>(stmt_ptr)) {
+        auto ast_stmt = m_ast.emplaceNode<cir::Statement>(name, loc, kind);
+
+        m_ast.getNode(ast_stmt).setLhs(ast_cond);
+
+        return ast_stmt;
+    } else if (auto break_stmt =
+                   dynamic_cast<const UHDM::break_stmt *>(stmt_ptr)) {
         (void)break_stmt;
         auto kind = cir::StatementKind::Break;
         return m_ast.emplaceNode<cir::Statement>(name, loc, kind);
-    } else if (auto continue_stmt = dynamic_cast<const UHDM::continue_stmt*>(stmt_ptr)) {
+    } else if (auto continue_stmt =
+                   dynamic_cast<const UHDM::continue_stmt *>(stmt_ptr)) {
         (void)continue_stmt;
         auto kind = cir::StatementKind::Continue;
         return m_ast.emplaceNode<cir::Statement>(name, loc, kind);
-    } else if (auto null_stmt = dynamic_cast<const UHDM::null_stmt*>(stmt_ptr)) {
+    } else if (auto null_stmt =
+                   dynamic_cast<const UHDM::null_stmt *>(stmt_ptr)) {
         (void)null_stmt;
+        spdlog::warn("Line {} Column {} Null Statement found", loc.line,
+                     loc.column);
         auto kind = cir::StatementKind::Null;
-        return m_ast.emplaceNode<cir::Statement>(name, loc, kind);
-    } else {
-        throwErrorUnsupported("Unimplemented statement kind", loc);
-        auto kind = cir::StatementKind::Invalid;
         return m_ast.emplaceNode<cir::Statement>(name, loc, kind);
     }
 
-    return cir::StatementIdx::null();
+    throwErrorUnsupported("Unimplemented statement kind", loc);
+    auto kind = cir::StatementKind::Invalid;
+    return m_ast.emplaceNode<cir::Statement>(name, loc, kind);
 }
 
 cir::TypeIdx
@@ -501,8 +587,12 @@ SurelogTranslator::parseTypespec(const UHDM::ref_typespec& typespec,
         kind = cir::TypeKind::Bit;
     } else if (dynamic_cast<const UHDM::integer_typespec *>(actual)) {
         kind = cir::TypeKind::Integer;
+    } else if (dynamic_cast<const UHDM::int_typespec *>(actual)) {
+        kind = cir::TypeKind::Int;
     } else {
-        throwErrorTodo(string_format("type for signal %s", signal_name), loc);
+        std::string owned_name(signal_name);
+        throwErrorTodo(string_format("type for signal %s", owned_name.c_str()),
+                       loc);
         kind = cir::TypeKind::Invalid;
     }
 
@@ -566,7 +656,10 @@ SurelogTranslator::parseContinuousAssignment(const UHDM::cont_assign& assign) {
     auto loc = getLocFromVpi(assign);
 
     auto assignment_idx = m_ast.emplaceNode<cir::Statement>(
-        name, loc, cir::StatementKind::Assignment, lhs_idx, rhs_idx);
+        name, loc, cir::StatementKind::Assignment);
+
+    m_ast.getNode(assignment_idx).setLhs(lhs_idx);
+    m_ast.getNode(assignment_idx).setRhs(rhs_idx);
 
     auto proc_idx = m_ast.emplaceNode<cir::Process>(name, loc, assignment_idx);
 
@@ -587,8 +680,8 @@ cir::SignalIdx SurelogTranslator::getSignalFromRef(const UHDM::ref_obj& ref) {
         CD_UNREACHABLE("Reference is neither a net nor a variable");
     }
 
-    // TODO: Throw an actual error here
-    auto ast_signal = m_ast.findSignal(full_name);
+    auto& scope = m_ast.getNode(m_current_scope);
+    auto ast_signal = scope.findSignalByName(m_ast, full_name);
 
     if (!ast_signal.isValid()) {
         std::string owned_name(full_name);
@@ -693,6 +786,24 @@ cir::ExprIdx SurelogTranslator::parseExpr(const UHDM::expr& expr) {
         return m_ast.emplaceNode<cir::Expr>(name, loc, cir::ExprKind::SignalRef,
                                             ast_signal);
 
+    } else if (auto variable = dynamic_cast<const UHDM::variables *>(&expr)) {
+        auto full_name = variable->VpiFullName();
+        auto& scope = m_ast.getNode(m_current_scope);
+        auto ast_signal = scope.findSignalByName(m_ast, full_name);
+
+        if (!ast_signal.isValid()) {
+            std::string owned_name(full_name);
+            auto msg = string_format("Undefined signal in initialization %s",
+                                     owned_name.c_str());
+            throwError(msg, loc);
+
+            return m_ast.emplaceNode<cir::Expr>(name, loc,
+                                                cir::ExprKind::Invalid);
+        }
+
+        return m_ast.emplaceNode<cir::Expr>(name, loc, cir::ExprKind::SignalRef,
+                                            ast_signal);
+
     } else {
         throwErrorTodo("expression type", loc);
         return m_ast.emplaceNode<cir::Expr>(name, loc, cir::ExprKind::Invalid);
@@ -717,8 +828,8 @@ cir::SignalIdx SurelogTranslator::parseNet(const UHDM::net& net) {
 
     auto typ = parseTypespec(*type_ref, name);
 
-    auto signal_idx = m_ast.emplaceNode<cir::Signal>(
-        name, loc, full_name, typ, cir::SignalDirection::Internal);
+    auto signal_idx = m_ast.emplaceNode<cir::Signal>(name, loc, full_name, typ,
+                                                     cir::SignalLifetime::Net);
 
     return signal_idx;
 }
@@ -736,7 +847,7 @@ SurelogTranslator::parseVariable(const UHDM::variables& variable) {
     auto typ = parseTypespec(*type_ref, name);
 
     auto signal_idx = m_ast.emplaceNode<cir::Signal>(
-        name, loc, full_name, typ, cir::SignalDirection::Internal);
+        name, loc, full_name, typ, cir::SignalLifetime::Static);
 
     return signal_idx;
 }

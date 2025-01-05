@@ -101,7 +101,7 @@ void SystemVerilogFrontend::reportError(FrontendError& error,
                                         std::string filename) {
     switch (error.kind()) {
     case FrontendErrorKind::Unsupported: {
-        spdlog::error("{} (line {}) Unsupported: {}", error.loc().line,
+        spdlog::error("{} (line {}) Unsupported: {}", filename, error.loc().line,
                       error.message());
     } break;
     case FrontendErrorKind::Todo: {

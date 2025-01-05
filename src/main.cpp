@@ -40,7 +40,7 @@ int main(int argc, const char **argv) {
         return -1;
     } catch (cudalator::UnimplementedException error) {
         auto loc = error.loc();
-        spdlog::error("[line {}: col {}] Unimplemented: {}", loc.line, loc.column,
+        spdlog::error("(line {}: col {}) Unimplemented: {}", loc.line, loc.column,
                       error.what());
         return -1;
     } catch (cudalator::CompilerException error) {
