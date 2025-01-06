@@ -249,11 +249,26 @@ void CirPrinter::printStatement(cir::Ast& ast,
         std::cout << "(for\n";
 
         m_indent++;
+
+        if (statement.scope().isValid()) {
+            auto& scope = ast.getNode(statement.scope());
+            if (scope.signals().size() > 0) {
+                printIndent();
+                std::cout << "(scope\n";
+                m_indent++;
+                printScope(ast, scope);
+                m_indent--;
+                printIndent();
+                std::cout << ")\n";
+            }
+        }
+
         auto& init = ast.getNode(statement.statement(0));
         printStatement(ast, init);
 
         printIndent();
         printExpr(ast, ast.getNode(statement.lhs()));
+        std::cout << "\n";
 
         auto& incr = ast.getNode(statement.statement(1));
         printStatement(ast, incr);

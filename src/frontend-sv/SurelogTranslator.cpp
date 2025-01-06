@@ -306,6 +306,89 @@ cir::StatementIdx SurelogTranslator::parseScope(const UHDM::scope& scope) {
 
         m_current_scope = prev_scope;
         return ast_stmt;
+    } else if (auto for_stmt =
+                   dynamic_cast<const UHDM::for_stmt *>(scope_ptr)) {
+        auto merge_multiple_stmts = [&](UHDM::VectorOfany *stmts) {
+            CD_ASSERT_NONNULL(stmts);
+            CD_ASSERT(stmts->size() > 0);
+
+            auto name = stmts->at(0)->VpiName();
+            auto loc = getLocFromVpi(*stmts->at(0));
+            auto block_idx = m_ast.emplaceNode<cir::Statement>(
+                name, loc, cir::StatementKind::Block);
+
+            for (auto stmt : *stmts) {
+                auto ast_stmt = parseStatement(stmt);
+                m_ast.getNode(block_idx).addStatement(ast_stmt);
+            }
+
+            return block_idx;
+        };
+
+        auto prev_scope = m_current_scope;
+        auto scope = m_ast.emplaceNode<cir::Scope>(name, loc, m_current_scope);
+        m_current_scope = scope;
+
+
+        if (for_stmt->Variables()) {
+            for (auto variable : *for_stmt->Variables()) {
+                auto var_idx = parseVariable(*variable);
+                m_ast.getNode(m_current_scope).addSignal(var_idx);
+            }
+        }
+
+        cir::StatementIdx ast_init;
+        cir::StatementIdx ast_incr;
+
+        // FIXME: For whatever reason using multiple init statements doesn't really work.
+        //        It seems like it's a bug on Surelog's end, but maybe we are doing something 
+        //        wrong. Probably worth a look or an issue in their github page.
+        auto inits = for_stmt->VpiForInitStmts();
+        if (inits) {
+            if (inits->size() == 1) {
+                ast_init = parseStatement(inits->at(0));
+            } else {
+                ast_init = merge_multiple_stmts(inits);
+            }
+        } else {
+            CD_ASSERT_NONNULL(for_stmt->VpiForInitStmt());
+            ast_init = parseStatement(for_stmt->VpiForInitStmt());
+        }
+
+        // NOTE: It's important to parse the condition after the initialization statements,
+        //       because sometimes initialization statements contain variable declarations. 
+        auto cond = for_stmt->VpiCondition();
+        CD_ASSERT_NONNULL(cond);
+        auto ast_cond = parseExpr(*cond);
+
+        auto incrs = for_stmt->VpiForIncStmts();
+        if (incrs) {
+            if (incrs->size() == 1) {
+                ast_incr = parseStatement(incrs->at(0));
+            } else {
+                ast_incr = merge_multiple_stmts(incrs);
+            }
+        } else {
+            CD_ASSERT_NONNULL(for_stmt->VpiForIncStmt());
+            ast_incr = parseStatement(for_stmt->VpiForIncStmt());
+        }
+
+        auto body = for_stmt->VpiStmt();
+        CD_ASSERT_NONNULL(body);
+        auto ast_body = parseStatement(body);
+
+        auto kind = cir::StatementKind::For;
+        auto ast_stmt = m_ast.emplaceNode<cir::Statement>(name, loc, kind);
+
+        m_ast.getNode(ast_stmt).setLhs(ast_cond);
+        m_ast.getNode(ast_stmt).addStatement(ast_init);
+        m_ast.getNode(ast_stmt).addStatement(ast_incr);
+        m_ast.getNode(ast_stmt).addStatement(ast_body);
+
+        m_ast.getNode(ast_stmt).setScope(m_current_scope);
+
+        m_current_scope = prev_scope;
+        return ast_stmt;
     }
 
     // TODO: Process for and foreach scopes
@@ -513,6 +596,9 @@ SurelogTranslator::parseAtomicStmt(const UHDM::atomic_stmt& stmt) {
         m_ast.getNode(ast_stmt).addStatement(ast_init);
         m_ast.getNode(ast_stmt).addStatement(ast_incr);
         m_ast.getNode(ast_stmt).addStatement(ast_body);
+
+        spdlog::warn("For found without a scope: line {}, column {}", loc.line,
+                     loc.column);
 
         return ast_stmt;
     } else if (auto foreach =
@@ -788,17 +874,17 @@ cir::ExprIdx SurelogTranslator::parseExpr(const UHDM::expr& expr) {
 
     } else if (auto variable = dynamic_cast<const UHDM::variables *>(&expr)) {
         auto full_name = variable->VpiFullName();
-        auto& scope = m_ast.getNode(m_current_scope);
-        auto ast_signal = scope.findSignalByName(m_ast, full_name);
+        auto ast_signal =
+            m_ast.getNode(m_current_scope).findSignalByName(m_ast, full_name);
 
+        // So, as it turns out sometimes Surelog decides to declare signals
+        // inside scopes in an expression instead of the vpiVariables field like
+        // it always does, like for example inside for statement initializers.
+        // This is a bit hacky, but it should be enough to handle that weird
+        // behavior.
         if (!ast_signal.isValid()) {
-            std::string owned_name(full_name);
-            auto msg = string_format("Undefined signal in initialization %s",
-                                     owned_name.c_str());
-            throwError(msg, loc);
-
-            return m_ast.emplaceNode<cir::Expr>(name, loc,
-                                                cir::ExprKind::Invalid);
+            ast_signal = parseVariable(*variable);
+            m_ast.getNode(m_current_scope).addSignal(ast_signal);
         }
 
         return m_ast.emplaceNode<cir::Expr>(name, loc, cir::ExprKind::SignalRef,
