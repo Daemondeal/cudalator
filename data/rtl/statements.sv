@@ -5,13 +5,6 @@ int y;
 int z;
 
 always_comb begin
-    for (x = 0; y < 2; x = x + 1) begin
-        x = y;
-    end
-end
-
-/*
-always_comb begin
     x = y + z;
     x <= y + z;
 
@@ -46,10 +39,9 @@ always_comb begin
         continue;
     end
 
-    for (x = 0; y < 2; x = x + 1) begin
+    for (x = 0; y < 2; x = y + 1) begin
         x = y;
     end
 end
-*/
 
 endmodule : statements
