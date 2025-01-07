@@ -45,8 +45,6 @@ SystemVerilogFrontend::compileSvToCir(std::vector<std::string> sources,
     m_clp->setElaborate(true); // Request Surelog instance tree elaboration
     m_clp->setElabUhdm(true);  // Request UHDM Uniquification/Elaboration
 
-    fmt::println("Hello from Frontend");
-
     bool all_exist = true;
     for (auto source : sources) {
         if (!std::filesystem::exists(source)) {
