@@ -12,12 +12,7 @@ set(CMAKE_CXX_FLAGS "-Wall -Wextra -Winit-self -Wno-unused-parameter")
 
 link_directories(${CMAKE_SOURCE_DIR}/build/libraries/lib)
 
-if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    include_directories(${CMAKE_SOURCE_DIR}/external/spdlog/include)
-endif()
-
 include_directories(${CMAKE_SOURCE_DIR}/external/fmt/include/)
-# Dependencies
 
 set(SPDLOG_FMT_EXTERNAL ON)
 
