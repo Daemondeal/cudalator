@@ -17,3 +17,7 @@ target_include_directories(
     PRIVATE ${CMAKE_SOURCE_DIR}/include
 )
 
+target_link_libraries(
+    cudalator-backend
+    PRIVATE spdlog::spdlog
+)

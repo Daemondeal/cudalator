@@ -19,4 +19,5 @@ target_include_directories(
 target_link_libraries(
     cudalator-frontend-sv
     PRIVATE surelog uhdm antlr4-runtime capnp kj z
+    PRIVATE spdlog::spdlog
 )

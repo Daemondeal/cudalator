@@ -17,9 +17,9 @@ include_directories(${CMAKE_SOURCE_DIR}/external/fmt/include/)
 set(SPDLOG_FMT_EXTERNAL ON)
 
 add_subdirectory(external/fmt/)
-add_subdirectory(external/spdlog/)
 
-# find_package(spdlog REQUIRED)
+set(spdlog_DIR ${CMAKE_SOURCE_DIR}/external/spdlog/build/)
+find_package(spdlog REQUIRED)
 
 add_executable(
     cudalator-compiler
