@@ -5,10 +5,10 @@
 
 #include "FrontendError.hpp"
 #include "cir/CIR.h"
-#include "uhdm/int_var.h"
 #include "utils.hpp"
 
 #include <charconv>
+#include <fmt/core.h>
 #include <spdlog/spdlog.h>
 #include <string_view>
 #include <uhdm/uhdm.h>
@@ -146,7 +146,7 @@ cir::ModulePort SurelogTranslator::parsePort(const UHDM::port& port) {
         ast_direction = cir::SignalDirection::Inout;
     } break;
     default: {
-        throwError(string_format("Invalid port type for port %s", name), loc);
+        throwError(fmt::format("Invalid port type for port {}", name), loc);
         ast_direction = cir::SignalDirection::Invalid;
     } break;
     };
@@ -329,7 +329,6 @@ cir::StatementIdx SurelogTranslator::parseScope(const UHDM::scope& scope) {
         auto scope = m_ast.emplaceNode<cir::Scope>(name, loc, m_current_scope);
         m_current_scope = scope;
 
-
         if (for_stmt->Variables()) {
             for (auto variable : *for_stmt->Variables()) {
                 auto var_idx = parseVariable(*variable);
@@ -340,9 +339,11 @@ cir::StatementIdx SurelogTranslator::parseScope(const UHDM::scope& scope) {
         cir::StatementIdx ast_init;
         cir::StatementIdx ast_incr;
 
-        // FIXME: For whatever reason using multiple init statements doesn't really work.
-        //        It seems like it's a bug on Surelog's end, but maybe we are doing something 
-        //        wrong. Probably worth a look or an issue in their github page.
+        // FIXME: For whatever reason using multiple init statements doesn't
+        // really work.
+        //        It seems like it's a bug on Surelog's end, but maybe we are
+        //        doing something wrong. Probably worth a look or an issue in
+        //        their github page.
         auto inits = for_stmt->VpiForInitStmts();
         if (inits) {
             if (inits->size() == 1) {
@@ -355,8 +356,10 @@ cir::StatementIdx SurelogTranslator::parseScope(const UHDM::scope& scope) {
             ast_init = parseStatement(for_stmt->VpiForInitStmt());
         }
 
-        // NOTE: It's important to parse the condition after the initialization statements,
-        //       because sometimes initialization statements contain variable declarations. 
+        // NOTE: It's important to parse the condition after the initialization
+        // statements,
+        //       because sometimes initialization statements contain variable
+        //       declarations.
         auto cond = for_stmt->VpiCondition();
         CD_ASSERT_NONNULL(cond);
         auto ast_cond = parseExpr(*cond);
@@ -676,9 +679,7 @@ SurelogTranslator::parseTypespec(const UHDM::ref_typespec& typespec,
     } else if (dynamic_cast<const UHDM::int_typespec *>(actual)) {
         kind = cir::TypeKind::Int;
     } else {
-        std::string owned_name(signal_name);
-        throwErrorTodo(string_format("type for signal %s", owned_name.c_str()),
-                       loc);
+        throwErrorTodo(fmt::format("type for signal {}", signal_name), loc);
         kind = cir::TypeKind::Invalid;
     }
 
@@ -770,8 +771,7 @@ cir::SignalIdx SurelogTranslator::getSignalFromRef(const UHDM::ref_obj& ref) {
     auto ast_signal = scope.findSignalByName(m_ast, full_name);
 
     if (!ast_signal.isValid()) {
-        std::string owned_name(full_name);
-        auto msg = string_format("Undefined signal %s", owned_name.c_str());
+        auto msg = fmt::format("Undefined signal {}", full_name);
         throwError(msg, loc);
         // FIXME: This will probably cause problems, handle it better somehow
         return cir::SignalIdx::null();
@@ -834,7 +834,7 @@ cir::ExprIdx SurelogTranslator::parseExpr(const UHDM::expr& expr) {
 
         switch (op->VpiOpType()) {
         default: {
-            throwErrorTodo(string_format("operation type %d", op->VpiOpType()),
+            throwErrorTodo(fmt::format("operation type {}", op->VpiOpType()),
                            loc);
             return m_ast.emplaceNode<cir::Expr>(name, loc,
                                                 cir::ExprKind::Invalid);

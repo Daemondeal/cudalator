@@ -1,8 +1,9 @@
 #pragma once
 
-#include "GenericAst.h"
+#include "CIR_Base.h"
+#include "CIR_GenericAst.h"
+
 #include <cstdint>
-#include <spdlog/spdlog.h>
 #include <string_view>
 #include <vector>
 
@@ -28,13 +29,6 @@ using StatementIdx = NodeIndex<Statement>;
 using ExprIdx = NodeIndex<Expr>;
 using ConstantIdx = NodeIndex<Constant>;
 
-class Loc {
-public:
-    uint32_t line;
-    uint32_t column;
-    Loc(uint32_t line, uint32_t col) : line(line), column(col) {}
-};
-
 struct Ast : GenericAst<Signal, Process, Module, Expr, Statement, Type,
                         Constant, Scope> {
     using GenericAst::GenericAst;
@@ -52,43 +46,6 @@ public:
 
 private:
     ModuleIdx m_top_module;
-};
-
-struct NodeBase {
-public:
-    NodeBase(std::string_view name, Loc loc) : m_name(name), m_loc(loc) {}
-
-    // Removing copy constructor since copying a node outside
-    // the ast is always unintended
-    NodeBase() = delete;
-    NodeBase(const NodeBase& other) = delete;
-    NodeBase& operator=(const NodeBase& other) = delete;
-
-    // Need to define the move constructor manually since the
-    // copy constructor had to be deleted
-    NodeBase(NodeBase&& other) noexcept
-        : m_name(other.m_name), m_loc(other.m_loc) {}
-
-    NodeBase& operator=(NodeBase&& other) {
-        if (this != &other) {
-            m_name = other.m_name;
-            m_loc = other.m_loc;
-        }
-        return *this;
-    }
-
-    const std::string_view& name() const {
-        return m_name;
-    }
-
-    Loc loc() const {
-        return m_loc;
-    }
-
-private:
-    std::string_view m_name;
-
-    Loc m_loc;
 };
 
 struct Range {

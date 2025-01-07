@@ -20,4 +20,5 @@ target_include_directories(
 target_link_libraries(
     cudalator-backend
     PRIVATE spdlog::spdlog
+    PRIVATE fmt::fmt
 )

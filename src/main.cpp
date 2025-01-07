@@ -3,13 +3,12 @@
 #include "backend/Backend.hpp"
 #include "frontend-sv/SystemVerilogFrontend.hpp"
 
+#include <argparse/argparse.hpp>
 #include <cir/CIR.h>
 #include <exception>
 #include <memory>
 #include <spdlog/spdlog.h>
-#include <argparse/argparse.hpp>
 
-#include <iostream>
 #include <string>
 #include <vector>
 
@@ -19,8 +18,6 @@ bool parseArguments(int argc, const char *argv[], CudalatorConfig *out_cfg) {
     program.add_argument("input-files")
         .help("input source files to compile")
         .nargs(argparse::nargs_pattern::at_least_one);
-
-
 
     program.add_argument("-v", "--verbose")
         .help("enable high verbosity logging")
@@ -33,7 +30,6 @@ bool parseArguments(int argc, const char *argv[], CudalatorConfig *out_cfg) {
         .default_value(false)
         .implicit_value(true)
         .nargs(0);
-
 
     try {
         program.parse_args(argc, argv);
@@ -80,17 +76,15 @@ int main(int argc, const char *argv[]) {
         cudalator::run_backend(std::move(ast), true);
     } catch (cudalator::UnsupportedException& error) {
         auto loc = error.loc();
-        spdlog::error("(line {}: col {}) Unsupported: {}", loc.line, loc.column,
-                      error.what());
+        spdlog::error("{} Unsupported: {}", loc, error.what());
         return -1;
     } catch (cudalator::UnimplementedException& error) {
         auto loc = error.loc();
-        spdlog::error("(line {}: col {}) Unimplemented: {}", loc.line, loc.column,
-                      error.what());
+        spdlog::error("{} Unimplemented: {}", loc, error.what());
         return -1;
     } catch (cudalator::CompilerException& error) {
         auto loc = error.loc();
-        spdlog::error("(line {}:col {}) {}", loc.line, loc.column, error.what());
+        spdlog::error("{} {}", loc, error.what());
         return -1;
     }
 

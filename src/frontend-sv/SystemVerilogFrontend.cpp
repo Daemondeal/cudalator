@@ -16,6 +16,8 @@
 #include <uhdm/vpi_user.h>
 #include <uhdm/vpi_visitor.h>
 
+#include <fmt/core.h>
+
 
 #include "FrontendError.hpp"
 #include "SurelogTranslator.hpp"
@@ -42,6 +44,8 @@ SystemVerilogFrontend::compileSvToCir(std::vector<std::string> sources,
     m_clp->setCompile(true);
     m_clp->setElaborate(true); // Request Surelog instance tree elaboration
     m_clp->setElabUhdm(true);  // Request UHDM Uniquification/Elaboration
+
+    fmt::println("Hello from Frontend");
 
     bool all_exist = true;
     for (auto source : sources) {
@@ -114,16 +118,16 @@ void SystemVerilogFrontend::reportError(FrontendError& error,
                                         std::string filename) {
     switch (error.kind()) {
     case FrontendErrorKind::Unsupported: {
-        spdlog::error("{} (line {}) Unsupported: {}", filename, error.loc().line,
+        spdlog::error("{} {} Unsupported: {}", filename, error.loc(),
                       error.message());
     } break;
     case FrontendErrorKind::Todo: {
-        spdlog::error("{} (line {}) TODO: {}", filename, error.loc().line,
+        spdlog::error("{} {} TODO: {}", filename, error.loc(),
                       error.message());
     } break;
     case FrontendErrorKind::Other:
     default: {
-        spdlog::error("{} (line {}): {}", filename, error.loc().line, error.message());
+        spdlog::error("{} {}: {}", filename, error.loc(), error.message());
     } break;
     }
 }

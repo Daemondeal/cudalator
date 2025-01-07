@@ -47,3 +47,5 @@ clean:
 
 purge:
 	rm -rf build
+	rm -rf ./external/Surelog/build/
+	rm -rf ./external/spdlog/build/
