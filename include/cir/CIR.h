@@ -225,6 +225,9 @@ enum class ExprKind {
     BitwiseXor,
     BitwiseXnor,
 
+    // exprs[0..len-1]: sub-exprs to concatenate
+    Concatenation,
+
     // exprs[0]: lhs, exprs[1]: rhs, signal: target
     PartSelect,
     // exprs[0]: bit number, signal: target

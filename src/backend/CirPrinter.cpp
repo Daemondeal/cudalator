@@ -353,6 +353,16 @@ void CirPrinter::printExpr(cir::Ast& ast, const cir::Expr& expr) {
     }
 
     switch (expr.kind()) {
+    case cir::ExprKind::Concatenation: {
+        std::cout << "(concat";
+        for (auto expr : expr.exprs()) {
+            auto& sub_expr = ast.getNode(expr);
+            std::cout << " ";
+            printExpr(ast, sub_expr);
+        }
+        std::cout << ")";
+
+    } break;
     case cir::ExprKind::SignalRef: {
         std::string_view name;
         if (expr.signal().isValid()) {

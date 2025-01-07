@@ -5,6 +5,7 @@
 
 #include "FrontendError.hpp"
 #include "cir/CIR.h"
+#include "uhdm/vpi_user.h"
 #include "utils.hpp"
 
 #include <charconv>
@@ -832,14 +833,25 @@ cir::ExprIdx SurelogTranslator::parseExpr(const UHDM::expr& expr) {
                                                 ast_rhs);
         }
 
-        switch (op->VpiOpType()) {
-        default: {
-            throwErrorTodo(fmt::format("operation type {}", op->VpiOpType()),
-                           loc);
-            return m_ast.emplaceNode<cir::Expr>(name, loc,
-                                                cir::ExprKind::Invalid);
-        } break;
+        if (op->VpiOpType() == vpiConcatOp) {
+            auto operands = op->Operands();
+            CD_ASSERT_NONNULL(operands);
+
+            auto ast_concat = m_ast.emplaceNode<cir::Expr>(name, loc, cir::ExprKind::Concatenation);
+
+            for (auto operand : *operands) {
+                auto operand_as_expr = dynamic_cast<const UHDM::expr*>(operand);
+                CD_ASSERT_NONNULL(operand_as_expr);
+
+                auto ast_op = parseExpr(*operand_as_expr);
+                m_ast.getNode(ast_concat).addExpr(ast_op);
+            }
+
+            return ast_concat;
         }
+
+        throwErrorTodo(fmt::format("operation type {}", op->VpiOpType()), loc);
+        return m_ast.emplaceNode<cir::Expr>(name, loc, cir::ExprKind::Invalid);
 
     } else if (auto part_sel = dynamic_cast<const UHDM::part_select *>(&expr)) {
         // NOTE: Part selects are a subclass of ref_objs, so check for these
