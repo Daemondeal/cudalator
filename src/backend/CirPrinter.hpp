@@ -2,15 +2,16 @@
 
 #include "cir/CIR.h"
 #include <cstdint>
+#include <iostream>
 
 namespace cudalator {
 class CirPrinter {
 public:
     CirPrinter();
+    CirPrinter(std::ostream& out);
     ~CirPrinter();
 
     void printPort(cir::Ast& ast, const cir::ModulePort& port);
-
 
     void printAst(cir::Ast& ast);
     void printModule(cir::Ast& ast, const cir::Module& module);
@@ -27,5 +28,6 @@ public:
 private:
     void printIndent();
     uint32_t m_indent;
+    std::ostream& m_out;
 };
 } // namespace cudalator

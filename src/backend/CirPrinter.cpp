@@ -6,7 +6,8 @@
 #include <string_view>
 
 namespace cudalator {
-CirPrinter::CirPrinter() : m_indent(0) {}
+CirPrinter::CirPrinter() : m_indent(0), m_out(std::cout) {}
+CirPrinter::CirPrinter(std::ostream &out) : m_indent(0), m_out(out) {}
 CirPrinter::~CirPrinter() {}
 
 void CirPrinter::printAst(cir::Ast& ast) {
@@ -19,32 +20,32 @@ void CirPrinter::printPort(cir::Ast& ast, const cir::ModulePort& port) {
     auto& ast_signal = ast.getNode(port.signal);
 
     printIndent();
-    std::cout << "(port " << ast_signal.name();
+    m_out << "(port " << ast_signal.name();
 
     switch (port.direction) {
     case cir::SignalDirection::Input: {
-        std::cout << " input";
+        m_out << " input";
     } break;
     case cir::SignalDirection::Output: {
-        std::cout << " output";
+        m_out << " output";
     } break;
     case cir::SignalDirection::Inout: {
-        std::cout << " inout";
+        m_out << " inout";
     } break;
     case cir::SignalDirection::Invalid: {
-        std::cout << " invalid";
+        m_out << " invalid";
     } break;
     }
 
-    std::cout << ")\n";
+    m_out << ")\n";
 }
 
 void CirPrinter::printModule(cir::Ast& ast, const cir::Module& module) {
-    std::cout << "(module " << module.name() << "\n";
+    m_out << "(module " << module.name() << "\n";
 
     m_indent++;
     printIndent();
-    std::cout << "(ports\n";
+    m_out << "(ports\n";
 
     m_indent++;
     for (auto port : module.ports()) {
@@ -52,7 +53,7 @@ void CirPrinter::printModule(cir::Ast& ast, const cir::Module& module) {
     }
 
     printIndent();
-    std::cout << ")\n";
+    m_out << ")\n";
     m_indent--;
 
     m_indent++;
@@ -65,7 +66,7 @@ void CirPrinter::printModule(cir::Ast& ast, const cir::Module& module) {
     }
 
     m_indent--;
-    std::cout << ")\n";
+    m_out << ")\n";
 }
 
 void CirPrinter::printScope(cir::Ast& ast, const cir::Scope& scope) {
@@ -78,24 +79,24 @@ void CirPrinter::printScope(cir::Ast& ast, const cir::Scope& scope) {
 
 void CirPrinter::printProcess(cir::Ast& ast, const cir::Process& process) {
     printIndent();
-    std::cout << "(process " << process.name() << "\n";
+    m_out << "(process " << process.name() << "\n";
     m_indent++;
     printIndent();
-    std::cout << "(sensitive";
+    m_out << "(sensitive";
     for (auto element : process.sensitivityList()) {
         if (element.kind == cir::SensitivityKind::Negedge) {
-            std::cout << " negedge";
+            m_out << " negedge";
         } else if (element.kind == cir::SensitivityKind::Posedge) {
-            std::cout << " posedge";
+            m_out << " posedge";
         }
 
         auto& signal = ast.getNode(element.signal);
-        std::cout << " " << signal.name();
+        m_out << " " << signal.name();
     }
-    std::cout << ")\n";
+    m_out << ")\n";
 
     printIndent();
-    std::cout << "(body\n";
+    m_out << "(body\n";
 
     m_indent++;
     auto& statement = ast.getNode(process.statement());
@@ -103,11 +104,11 @@ void CirPrinter::printProcess(cir::Ast& ast, const cir::Process& process) {
     m_indent--;
 
     printIndent();
-    std::cout << ")\n";
+    m_out << ")\n";
 
     m_indent--;
     printIndent();
-    std::cout << ")\n";
+    m_out << ")\n";
 }
 
 void CirPrinter::printStatement(cir::Ast& ast,
@@ -115,33 +116,33 @@ void CirPrinter::printStatement(cir::Ast& ast,
     switch (statement.kind()) {
     case cir::StatementKind::Assignment: {
         printIndent();
-        std::cout << "(assign ";
+        m_out << "(assign ";
         auto& lhs = ast.getNode(statement.lhs());
         auto& rhs = ast.getNode(statement.rhs());
 
         printExpr(ast, lhs);
-        std::cout << " ";
+        m_out << " ";
         printExpr(ast, rhs);
 
-        std::cout << ")\n";
+        m_out << ")\n";
 
     } break;
     case cir::StatementKind::NonBlockingAssignment: {
         printIndent();
-        std::cout << "(assign_nonblock ";
+        m_out << "(assign_nonblock ";
         auto& lhs = ast.getNode(statement.lhs());
         auto& rhs = ast.getNode(statement.rhs());
 
         printExpr(ast, lhs);
-        std::cout << " ";
+        m_out << " ";
         printExpr(ast, rhs);
 
-        std::cout << ")\n";
+        m_out << ")\n";
 
     } break;
     case cir::StatementKind::Block: {
         printIndent();
-        std::cout << "(block \n";
+        m_out << "(block \n";
 
         m_indent++;
         if (statement.scope().isValid()) {
@@ -156,30 +157,30 @@ void CirPrinter::printStatement(cir::Ast& ast,
         m_indent--;
 
         printIndent();
-        std::cout << ")\n";
+        m_out << ")\n";
 
     } break;
     case cir::StatementKind::If: {
         printIndent();
-        std::cout << "(if ";
+        m_out << "(if ";
         auto& cond = ast.getNode(statement.lhs());
         printExpr(ast, cond);
-        std::cout << "\n";
+        m_out << "\n";
 
         auto& body = ast.getNode(statement.body());
         m_indent++;
         printStatement(ast, body);
         m_indent--;
         printIndent();
-        std::cout << ")\n";
+        m_out << ")\n";
 
     } break;
     case cir::StatementKind::IfElse: {
         printIndent();
-        std::cout << "(if ";
+        m_out << "(if ";
         auto& cond = ast.getNode(statement.lhs());
         printExpr(ast, cond);
-        std::cout << "\n";
+        m_out << "\n";
 
         auto& body = ast.getNode(statement.statement(0));
         auto& else_stmt = ast.getNode(statement.statement(1));
@@ -188,22 +189,22 @@ void CirPrinter::printStatement(cir::Ast& ast,
         printStatement(ast, body);
         m_indent--;
         printIndent();
-        std::cout << "else (\n";
+        m_out << "else (\n";
 
         m_indent++;
         printStatement(ast, else_stmt);
         m_indent--;
 
         printIndent();
-        std::cout << ")\n";
+        m_out << ")\n";
 
     } break;
     case cir::StatementKind::While: {
         printIndent();
-        std::cout << "(while ";
+        m_out << "(while ";
         auto& cond = ast.getNode(statement.lhs());
         printExpr(ast, cond);
-        std::cout << "\n";
+        m_out << "\n";
 
         auto& body = ast.getNode(statement.body());
 
@@ -211,11 +212,11 @@ void CirPrinter::printStatement(cir::Ast& ast,
         printStatement(ast, body);
         m_indent--;
         printIndent();
-        std::cout << ")\n";
+        m_out << ")\n";
     } break;
     case cir::StatementKind::DoWhile: {
         printIndent();
-        std::cout << "(do\n";
+        m_out << "(do\n";
 
         auto& body = ast.getNode(statement.body());
 
@@ -224,17 +225,17 @@ void CirPrinter::printStatement(cir::Ast& ast,
         m_indent--;
 
         printIndent();
-        std::cout << "while ";
+        m_out << "while ";
         auto& cond = ast.getNode(statement.lhs());
         printExpr(ast, cond);
-        std::cout << ")\n";
+        m_out << ")\n";
     } break;
     case cir::StatementKind::Repeat: {
         printIndent();
-        std::cout << "(repeat ";
+        m_out << "(repeat ";
         auto& cond = ast.getNode(statement.lhs());
         printExpr(ast, cond);
-        std::cout << "\n";
+        m_out << "\n";
 
         auto& body = ast.getNode(statement.body());
 
@@ -242,11 +243,11 @@ void CirPrinter::printStatement(cir::Ast& ast,
         printStatement(ast, body);
         m_indent--;
         printIndent();
-        std::cout << ")\n";
+        m_out << ")\n";
     } break;
     case cir::StatementKind::For: {
         printIndent();
-        std::cout << "(for\n";
+        m_out << "(for\n";
 
         m_indent++;
 
@@ -254,12 +255,12 @@ void CirPrinter::printStatement(cir::Ast& ast,
             auto& scope = ast.getNode(statement.scope());
             if (scope.signals().size() > 0) {
                 printIndent();
-                std::cout << "(scope\n";
+                m_out << "(scope\n";
                 m_indent++;
                 printScope(ast, scope);
                 m_indent--;
                 printIndent();
-                std::cout << ")\n";
+                m_out << ")\n";
             }
         }
 
@@ -268,7 +269,7 @@ void CirPrinter::printStatement(cir::Ast& ast,
 
         printIndent();
         printExpr(ast, ast.getNode(statement.lhs()));
-        std::cout << "\n";
+        m_out << "\n";
 
         auto& incr = ast.getNode(statement.statement(1));
         printStatement(ast, incr);
@@ -278,12 +279,12 @@ void CirPrinter::printStatement(cir::Ast& ast,
         m_indent--;
 
         printIndent();
-        std::cout << ")\n";
+        m_out << ")\n";
     } break;
 
     case cir::StatementKind::Forever: {
         printIndent();
-        std::cout << "(forever\n";
+        m_out << "(forever\n";
 
         m_indent++;
         auto& body = ast.getNode(statement.body());
@@ -291,76 +292,76 @@ void CirPrinter::printStatement(cir::Ast& ast,
         m_indent--;
 
         printIndent();
-        std::cout << ")\n";
+        m_out << ")\n";
 
     } break;
 
     case cir::StatementKind::Return: {
         printIndent();
-        std::cout << "(return ";
+        m_out << "(return ";
         auto& rval = ast.getNode(statement.lhs());
         printExpr(ast, rval);
-        std::cout << ")\n";
+        m_out << ")\n";
     } break;
 
     case cir::StatementKind::Break: {
         printIndent();
-        std::cout << "(break)\n";
+        m_out << "(break)\n";
     } break;
 
     case cir::StatementKind::Continue: {
         printIndent();
-        std::cout << "(continue)\n";
+        m_out << "(continue)\n";
     } break;
 
     case cir::StatementKind::Null: {
         printIndent();
-        std::cout << "(null)\n";
+        m_out << "(null)\n";
     } break;
 
     default: {
         printIndent();
-        std::cout << "(unhandled statement)\n";
+        m_out << "(unhandled statement)\n";
     } break;
     }
 }
 
 void CirPrinter::printExpr(cir::Ast& ast, const cir::Expr& expr) {
     if (expr.isUnary()) {
-        std::cout << "(";
+        m_out << "(";
         printUnaryOp(expr.kind());
 
-        std::cout << " ";
+        m_out << " ";
         auto& operand = ast.getNode(expr.expr(0));
         printExpr(ast, operand);
-        std::cout << ")";
+        m_out << ")";
         return;
     }
 
     if (expr.isBinary()) {
-        std::cout << "(";
+        m_out << "(";
         printBinaryOp(expr.kind());
 
-        std::cout << " ";
+        m_out << " ";
         auto& lhs = ast.getNode(expr.lhs());
         auto& rhs = ast.getNode(expr.rhs());
 
         printExpr(ast, lhs);
-        std::cout << " ";
+        m_out << " ";
         printExpr(ast, rhs);
-        std::cout << ")";
+        m_out << ")";
         return;
     }
 
     switch (expr.kind()) {
     case cir::ExprKind::Concatenation: {
-        std::cout << "(concat";
+        m_out << "(concat";
         for (auto expr : expr.exprs()) {
             auto& sub_expr = ast.getNode(expr);
-            std::cout << " ";
+            m_out << " ";
             printExpr(ast, sub_expr);
         }
-        std::cout << ")";
+        m_out << ")";
 
     } break;
     case cir::ExprKind::SignalRef: {
@@ -372,13 +373,13 @@ void CirPrinter::printExpr(cir::Ast& ast, const cir::Expr& expr) {
             name = "invalid";
         }
 
-        std::cout << "(signal " << name << ")";
+        m_out << "(signal " << name << ")";
     } break;
 
     case cir::ExprKind::Constant: {
         // TODO: This has to be handled better
         auto& constant = ast.getNode(expr.constant());
-        std::cout << "(constant " << constant.value() << ")";
+        m_out << "(constant " << constant.value() << ")";
     } break;
 
     case cir::ExprKind::PartSelect: {
@@ -386,11 +387,11 @@ void CirPrinter::printExpr(cir::Ast& ast, const cir::Expr& expr) {
         auto& lhs = ast.getNode(expr.lhs());
         auto& rhs = ast.getNode(expr.rhs());
 
-        std::cout << "(select " << signal.name() << " ";
+        m_out << "(select " << signal.name() << " ";
         printExpr(ast, lhs);
-        std::cout << " ";
+        m_out << " ";
         printExpr(ast, rhs);
-        std::cout << ")";
+        m_out << ")";
     } break;
 
     case cir::ExprKind::BitSelect: {
@@ -398,13 +399,13 @@ void CirPrinter::printExpr(cir::Ast& ast, const cir::Expr& expr) {
         auto& expr_idx = expr.exprs()[0];
         auto& idx = ast.getNode(expr_idx);
 
-        std::cout << "(select_bit " << signal.name() << " ";
+        m_out << "(select_bit " << signal.name() << " ";
         printExpr(ast, idx);
-        std::cout << ")";
+        m_out << ")";
     } break;
 
     default: {
-        std::cout << "(unhandled)";
+        m_out << "(unhandled)";
     } break;
     }
 }
@@ -412,17 +413,17 @@ void CirPrinter::printExpr(cir::Ast& ast, const cir::Expr& expr) {
 void CirPrinter::printSignal(cir::Ast& ast, const cir::Signal& signal) {
     printIndent();
 
-    std::cout << "(signal " << signal.name();
+    m_out << "(signal " << signal.name();
 
     switch (signal.lifetime()) {
     case cir::SignalLifetime::Static: {
-        std::cout << " static";
+        m_out << " static";
     } break;
     case cir::SignalLifetime::Automatic: {
-        std::cout << " automatic";
+        m_out << " automatic";
     } break;
     case cir::SignalLifetime::Net: {
-        std::cout << " net";
+        m_out << " net";
     } break;
     }
 
@@ -433,7 +434,7 @@ void CirPrinter::printSignal(cir::Ast& ast, const cir::Signal& signal) {
         printType(ast, type);
     }
 
-    std::cout << ")\n";
+    m_out << ")\n";
 }
 
 void CirPrinter::printType(cir::Ast& ast, const cir::Type& type) {
@@ -443,67 +444,67 @@ void CirPrinter::printType(cir::Ast& ast, const cir::Type& type) {
 
     switch (kind) {
     case cir::TypeKind::Logic: {
-        std::cout << " logic";
+        m_out << " logic";
     } break;
     case cir::TypeKind::Bit: {
-        std::cout << " bit";
+        m_out << " bit";
     } break;
     case cir::TypeKind::Integer: {
-        std::cout << " integer";
+        m_out << " integer";
     } break;
     case cir::TypeKind::Int: {
-        std::cout << " int";
+        m_out << " int";
     } break;
     case cir::TypeKind::Invalid: {
-        std::cout << " invalid";
+        m_out << " invalid";
     } break;
     }
 
     for (auto range : type.ranges()) {
-        std::cout << " [" << range.left() << ":" << range.right() << "]";
+        m_out << " [" << range.left() << ":" << range.right() << "]";
     }
 }
 
 void CirPrinter::printUnaryOp(const cir::ExprKind kind) {
     switch (kind) {
     case cir::ExprKind::UnaryMinus:
-        std::cout << "-";
+        m_out << "-";
         break;
     case cir::ExprKind::UnaryPlus:
-        std::cout << "+";
+        m_out << "+";
         break;
     case cir::ExprKind::Not:
-        std::cout << "!";
+        m_out << "!";
         break;
     case cir::ExprKind::BinaryNegation:
-        std::cout << "~";
+        m_out << "~";
         break;
     case cir::ExprKind::ReductionAnd:
-        std::cout << "red_and";
+        m_out << "red_and";
         break;
     case cir::ExprKind::ReductionNand:
-        std::cout << "red_nand";
+        m_out << "red_nand";
         break;
     case cir::ExprKind::ReductionOr:
-        std::cout << "red_or";
+        m_out << "red_or";
         break;
     case cir::ExprKind::ReductionNor:
-        std::cout << "red_nor";
+        m_out << "red_nor";
         break;
     case cir::ExprKind::ReductionXor:
-        std::cout << "red_xor";
+        m_out << "red_xor";
         break;
     case cir::ExprKind::ReductionXnor:
-        std::cout << "red_xnor";
+        m_out << "red_xnor";
         break;
     case cir::ExprKind::Posedge:
-        std::cout << "posedge";
+        m_out << "posedge";
         break;
     case cir::ExprKind::Negedge:
-        std::cout << "negedge";
+        m_out << "negedge";
         break;
     default:
-        std::cout << "invalid_unary";
+        m_out << "invalid_unary";
         break;
     }
 }
@@ -511,70 +512,70 @@ void CirPrinter::printUnaryOp(const cir::ExprKind kind) {
 void CirPrinter::printBinaryOp(const cir::ExprKind kind) {
     switch (kind) {
     case cir::ExprKind::Subtraction:
-        std::cout << "-";
+        m_out << "-";
         break;
     case cir::ExprKind::Division:
-        std::cout << "/";
+        m_out << "/";
         break;
     case cir::ExprKind::Modulo:
-        std::cout << "%";
+        m_out << "%";
         break;
     case cir::ExprKind::Equality:
-        std::cout << "==";
+        m_out << "==";
         break;
     case cir::ExprKind::NotEquality:
-        std::cout << "!=";
+        m_out << "!=";
         break;
     case cir::ExprKind::GreaterThan:
-        std::cout << ">";
+        m_out << ">";
         break;
     case cir::ExprKind::GreaterThanEq:
-        std::cout << ">=";
+        m_out << ">=";
         break;
     case cir::ExprKind::LessThan:
-        std::cout << "<";
+        m_out << "<";
         break;
     case cir::ExprKind::LessThanEq:
-        std::cout << "<=";
+        m_out << "<=";
         break;
     case cir::ExprKind::LeftShift:
-        std::cout << "<<";
+        m_out << "<<";
         break;
     case cir::ExprKind::RightShift:
-        std::cout << ">>";
+        m_out << ">>";
         break;
     case cir::ExprKind::Addition:
-        std::cout << "+";
+        m_out << "+";
         break;
     case cir::ExprKind::Multiplication:
-        std::cout << "*";
+        m_out << "*";
         break;
     case cir::ExprKind::LogicalAnd:
-        std::cout << "and";
+        m_out << "and";
         break;
     case cir::ExprKind::LogicalOr:
-        std::cout << "or";
+        m_out << "or";
         break;
     case cir::ExprKind::BitwiseAnd:
-        std::cout << "&";
+        m_out << "&";
         break;
     case cir::ExprKind::BitwiseOr:
-        std::cout << "|";
+        m_out << "|";
         break;
     case cir::ExprKind::BitwiseXor:
-        std::cout << "^";
+        m_out << "^";
         break;
     case cir::ExprKind::BitwiseXnor:
-        std::cout << "~^";
+        m_out << "~^";
         break;
     default:
-        std::cout << "binary_invalid";
+        m_out << "binary_invalid";
     }
 }
 
 void CirPrinter::printIndent() {
     for (size_t i = 0; i < m_indent; i++) {
-        std::cout << " ";
+        m_out << " ";
     }
 }
 
