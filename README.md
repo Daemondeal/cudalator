@@ -32,7 +32,9 @@ If you are a contributor, run `mkdocs gh-deploy` whenever you modify the docs.
 
 - [Surelog](https://github.com/chipsalliance/Surelog)
 - [spdlog](https://github.com/gabime/spdlog)
-- [fmt](https://github.com/fmtlib/fmt)
+- [fmt 11.0.2](https://github.com/fmtlib/fmt)
+- [argparse 3.1](https://github.com/p-ranav/argparse)
+
 
 ## Dependencies
 

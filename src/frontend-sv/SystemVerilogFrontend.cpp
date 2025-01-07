@@ -17,8 +17,6 @@
 #include <uhdm/vpi_visitor.h>
 
 
-#include <fmt/core.h>
-
 #include "FrontendError.hpp"
 #include "SurelogTranslator.hpp"
 #include "uhdm/module_inst.h"
@@ -55,9 +53,6 @@ SystemVerilogFrontend::compileSvToCir(std::vector<std::string> sources,
 
     if (!all_exist)
         return nullptr;
-
-    auto example = fmt::format("numba: {}", 12);
-    spdlog::info("{}", example);
 
     // NOTE(Pietro): A bit hacky but it's the easiest way I found
     //               to give it the input file

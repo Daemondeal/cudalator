@@ -1,55 +1,98 @@
+#include "CudalatorConfig.hpp"
 #include "Exceptions.hpp"
 #include "backend/Backend.hpp"
 #include "frontend-sv/SystemVerilogFrontend.hpp"
 
 #include <cir/CIR.h>
+#include <exception>
 #include <memory>
 #include <spdlog/spdlog.h>
+#include <argparse/argparse.hpp>
 
 #include <iostream>
 #include <string>
 #include <vector>
 
-int main(int argc, const char **argv) {
-    if (argc != 2) {
-        std::cerr << "USAGE: cudalator-compiler <path-to-sv-file>\n";
+bool parseArguments(int argc, const char *argv[], CudalatorConfig *out_cfg) {
+    argparse::ArgumentParser program("cudalator-compiler");
+
+    program.add_argument("input-files")
+        .help("input source files to compile")
+        .nargs(argparse::nargs_pattern::at_least_one);
+
+
+
+    program.add_argument("-v", "--verbose")
+        .help("enable high verbosity logging")
+        .default_value(false)
+        .implicit_value(true)
+        .nargs(0);
+
+    program.add_argument("--print-uhdm-ast")
+        .help("print the UDHM ast before translating it to CIR")
+        .default_value(false)
+        .implicit_value(true)
+        .nargs(0);
+
+
+    try {
+        program.parse_args(argc, argv);
+    } catch (const std::exception& err) {
+        spdlog::error("{}", err.what());
+        return false;
+    }
+
+    out_cfg->sources = program.get<std::vector<std::string>>("input-files");
+    out_cfg->verbose = program.get<bool>("verbose");
+    out_cfg->print_udhm_ast = program.get<bool>("--print-uhdm-ast");
+
+    return true;
+}
+
+int main(int argc, const char *argv[]) {
+    CudalatorConfig cfg;
+
+    // [<levelname>]: <message>
+    spdlog::set_pattern("[%^%l%$] %v");
+
+    bool result = parseArguments(argc, argv, &cfg);
+
+    if (!result) {
         return -1;
     }
 
-    // TODO: Make this configurable
-    spdlog::set_level(spdlog::level::debug);
-    spdlog::set_pattern("[%^%l%$] %v");
-
-    std::string source_path(argv[1]);
+    if (cfg.verbose) {
+        spdlog::set_level(spdlog::level::debug);
+    } else {
+        spdlog::set_level(spdlog::level::info);
+    }
 
     cudalator::SystemVerilogFrontend frontend;
 
     try {
-        auto ast = frontend.compileSvToCir({source_path}, true);
+        auto ast = frontend.compileSvToCir(cfg.sources, cfg.print_udhm_ast);
 
         if (!ast) {
-            spdlog::error("Error while compiling \"{}\".", source_path);
+            spdlog::error("Error during compilation");
             return -1;
         }
 
         cudalator::run_backend(std::move(ast), true);
-    } catch (cudalator::UnsupportedException error) {
+    } catch (cudalator::UnsupportedException& error) {
         auto loc = error.loc();
         spdlog::error("(line {}: col {}) Unsupported: {}", loc.line, loc.column,
                       error.what());
         return -1;
-    } catch (cudalator::UnimplementedException error) {
+    } catch (cudalator::UnimplementedException& error) {
         auto loc = error.loc();
         spdlog::error("(line {}: col {}) Unimplemented: {}", loc.line, loc.column,
                       error.what());
         return -1;
-    } catch (cudalator::CompilerException error) {
+    } catch (cudalator::CompilerException& error) {
         auto loc = error.loc();
         spdlog::error("(line {}:col {}) {}", loc.line, loc.column, error.what());
         return -1;
     }
-
-    // auto ast = generateTestAst();
 
     return 0;
 }
