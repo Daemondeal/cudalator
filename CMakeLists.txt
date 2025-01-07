@@ -8,7 +8,6 @@ project(
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-set(CMAKE_CXX_COMPILER "/usr/bin/clang++")
 set(CMAKE_CXX_FLAGS "-Wall -Wextra -Winit-self -Wno-unused-parameter")
 
 link_directories(${CMAKE_SOURCE_DIR}/build/libraries/lib)
@@ -16,6 +15,14 @@ link_directories(${CMAKE_SOURCE_DIR}/build/libraries/lib)
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     include_directories(${CMAKE_SOURCE_DIR}/external/spdlog/include)
 endif()
+
+include_directories(${CMAKE_SOURCE_DIR}/external/fmt/include/)
+# Dependencies
+
+set(SPDLOG_FMT_EXTERNAL ON)
+
+add_subdirectory(external/fmt/)
+add_subdirectory(external/spdlog/)
 
 find_package(spdlog REQUIRED)
 
@@ -45,5 +52,6 @@ target_link_libraries(
 
 target_link_libraries(
     cudalator-compiler
+    PRIVATE fmt::fmt
     PRIVATE spdlog::spdlog
 )
