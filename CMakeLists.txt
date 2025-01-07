@@ -19,7 +19,7 @@ set(SPDLOG_FMT_EXTERNAL ON)
 add_subdirectory(external/fmt/)
 add_subdirectory(external/spdlog/)
 
-find_package(spdlog REQUIRED)
+# find_package(spdlog REQUIRED)
 
 add_executable(
     cudalator-compiler
