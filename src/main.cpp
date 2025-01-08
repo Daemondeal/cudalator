@@ -19,6 +19,10 @@ bool parseArguments(int argc, const char *argv[], CudalatorConfig *out_cfg) {
         .help("input source files to compile")
         .nargs(argparse::nargs_pattern::at_least_one);
 
+    program.add_argument("--top", "-t")
+        .help("specify the top entity")
+        .default_value("");
+
     program.add_argument("-v", "--verbose")
         .help("enable high verbosity logging")
         .default_value(false)
@@ -42,6 +46,8 @@ bool parseArguments(int argc, const char *argv[], CudalatorConfig *out_cfg) {
     out_cfg->verbose = program.get<bool>("verbose");
     out_cfg->print_udhm_ast = program.get<bool>("--print-uhdm-ast");
 
+    out_cfg->top_entity_name = program.get<std::string>("--top");
+
     return true;
 }
 
@@ -59,6 +65,7 @@ int main(int argc, const char *argv[]) {
 
     if (cfg.verbose) {
         spdlog::set_level(spdlog::level::debug);
+        spdlog::flush_on(spdlog::level::debug);
     } else {
         spdlog::set_level(spdlog::level::info);
     }

@@ -7,7 +7,7 @@
 
 namespace cudalator {
 CirPrinter::CirPrinter() : m_indent(0), m_out(std::cout) {}
-CirPrinter::CirPrinter(std::ostream &out) : m_indent(0), m_out(out) {}
+CirPrinter::CirPrinter(std::ostream& out) : m_indent(0), m_out(out) {}
 CirPrinter::~CirPrinter() {}
 
 void CirPrinter::printAst(cir::Ast& ast) {
@@ -45,16 +45,20 @@ void CirPrinter::printModule(cir::Ast& ast, const cir::Module& module) {
 
     m_indent++;
     printIndent();
-    m_out << "(ports\n";
+    m_out << "(ports";
 
-    m_indent++;
-    for (auto port : module.ports()) {
-        printPort(ast, port);
+    if (module.ports().size() > 0) {
+        m_out << "\n";
+
+        m_indent++;
+        for (auto port : module.ports()) {
+            printPort(ast, port);
+        }
+
+        printIndent();
+        m_indent--;
     }
-
-    printIndent();
     m_out << ")\n";
-    m_indent--;
 
     m_indent++;
     printScope(ast, ast.getNode(module.scope()));

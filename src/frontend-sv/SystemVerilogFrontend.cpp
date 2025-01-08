@@ -23,6 +23,7 @@
 #include "SurelogTranslator.hpp"
 #include "uhdm/module_inst.h"
 #include "uhdm/uhdm_types.h"
+#include "../utils.hpp"
 
 namespace cudalator {
 
@@ -59,9 +60,15 @@ SystemVerilogFrontend::compileSvToCir(std::vector<std::string> sources,
     // NOTE(Pietro): A bit hacky but it's the easiest way I found
     //               to give it the input file
     spdlog::warn("FIXME: ONLY COMPILING THE FIRST SOURCE");
-    std::string path = sources[0];
-    char const *args[2] = {"", path.c_str()};
-    m_clp->parseCommandLine(2, args);
+
+    // FIXME: Make this less ugly
+    const char **args = (const char**)calloc(sources.size()+1, sizeof(char*));
+    args[0] = "";
+    for (size_t i = 0; i < sources.size(); i++) {
+        args[i+1] = sources[i].c_str();
+    }
+
+    m_clp->parseCommandLine(sources.size()+1, args);
 
     // Compile Design
     vpiHandle vpi_design = nullptr;
@@ -89,11 +96,13 @@ SystemVerilogFrontend::translateAst(vpiHandle design_h) {
     while (vpiHandle mod_h = vpi_scan(iter)) {
         auto mod_name = vpi_get_str(vpiName, mod_h);
 
+        CD_ASSERT_NONNULL(mod_name);
+        spdlog::debug("Translating module {}", mod_name);
+
         auto handle = reinterpret_cast<const uhdm_handle *>(mod_h);
         auto mod_handle =
             reinterpret_cast<const UHDM::module_inst *>(handle->object);
 
-        spdlog::debug("Translating module {}", mod_name);
 
         auto mod_idx = translator.parseModule(*mod_handle);
         if (translator.getErrors().size() > 0) {
