@@ -10,12 +10,22 @@
 
 #include <charconv>
 #include <fmt/core.h>
+#include <fmt/format.h>
 #include <spdlog/spdlog.h>
 #include <string_view>
 #include <uhdm/uhdm.h>
 #include <vector>
 
 namespace cudalator {
+
+static std::string_view removePrefix(std::string_view src,
+                                     std::string_view prefix) {
+    if (src.size() > prefix.size() && src.substr(0, prefix.size()) == prefix) {
+        return src.substr(prefix.size());
+    }
+
+    return src;
+}
 
 static cir::Loc getLocFromVpi(const UHDM::BaseClass& obj_h) {
     return cir::Loc(obj_h.VpiLineNo(), obj_h.VpiColumnNo());
@@ -62,15 +72,32 @@ static int64_t evaluateConstant(std::string_view constant, cir::Loc loc) {
 SurelogTranslator::SurelogTranslator(cir::Ast& ast)
     : m_ast(ast), m_current_scope(cir::ScopeIdx::null()) {}
 
+std::string_view SurelogTranslator::cleanSignalName(std::string_view name) {
+    return removePrefix(name, m_signals_prefix);
+}
+
 cir::ModuleIdx SurelogTranslator::parseModule(const UHDM::module_inst& module) {
     auto name = module.VpiName();
     auto loc = getLocFromVpi(module);
+
+    m_signals_prefix = fmt::format("{}.", module.VpiName());
 
     auto mod_scope = m_ast.emplaceNode<cir::Scope>(name, loc, m_current_scope);
     auto mod_idx = m_ast.emplaceNode<cir::Module>(name, loc, mod_scope);
 
     auto prev_scope = m_current_scope;
     m_current_scope = mod_scope;
+
+    parseModuleFlattened(module, mod_idx, true);
+
+    m_current_scope = prev_scope;
+    return mod_idx;
+}
+
+void SurelogTranslator::parseModuleFlattened(const UHDM::module_inst& module,
+                                             cir::ModuleIdx module_idx,
+                                             bool isTop) {
+    auto mod_idx = module_idx;
 
     if (module.Nets()) {
         for (auto net : *module.Nets()) {
@@ -89,8 +116,13 @@ cir::ModuleIdx SurelogTranslator::parseModule(const UHDM::module_inst& module) {
 
     if (module.Ports()) {
         for (auto port : *module.Ports()) {
-            auto ast_port = parsePort(*port);
-            m_ast.getNode(mod_idx).addPort(ast_port);
+            if (isTop) {
+                auto ast_port = parsePortTop(*port);
+                m_ast.getNode(mod_idx).addPort(ast_port);
+            } else {
+                auto ast_connection = parsePortSub(*port);
+                m_ast.getNode(mod_idx).addProcess(ast_connection);
+            }
         }
     }
 
@@ -123,13 +155,76 @@ cir::ModuleIdx SurelogTranslator::parseModule(const UHDM::module_inst& module) {
         }
     }
 
-    // TODO: Add the rest
+    if (module.Modules()) {
+        for (auto submodule : *module.Modules()) {
+            parseModuleFlattened(*submodule, mod_idx, false);
+        }
+    }
 
-    m_current_scope = prev_scope;
-    return mod_idx;
+    // TODO:
+    // if (module.Gen_scope_arrays()) {
+    //     for (auto gen_scope_arr : *module.Gen_scope_arrays()) {
+    //         auto name = gen_scope_arr->VpiName();
+    //         auto size = gen_scope_arr->VpiSize();
+    //         spdlog::debug("Found gen scope array {} with size {}", name, size);
+    //         if (gen_scope_arr->Gen_scopes()) {
+    //             for (auto gen_scope : *gen_scope_arr->Gen_scopes()) {
+    //                 auto gsname = gen_scope_arr->VpiName();
+    //                 spdlog::debug("Found gen scope {}", name);
+    //             }
+    //         }
+    //     }
+    // }
+
+    // TODO: Add the rest
 }
 
-cir::ModulePort SurelogTranslator::parsePort(const UHDM::port& port) {
+cir::ProcessIdx SurelogTranslator::parsePortSub(const UHDM::port& port) {
+    auto name = port.VpiName();
+    auto loc = getLocFromVpi(port);
+    auto direction = port.VpiDirection();
+
+    auto low_conn = port.Low_conn<UHDM::expr>();
+    CD_ASSERT_NONNULL(low_conn);
+
+    auto high_conn = port.High_conn<UHDM::expr>();
+
+    if (!high_conn) {
+        spdlog::warn("Port {} is unconnected", name);
+        return cir::ProcessIdx::null();
+    }
+
+    auto high = parseExpr(*high_conn);
+    auto low = parseExpr(*low_conn);
+
+    cir::ExprIdx lhs;
+    cir::ExprIdx rhs;
+    if (direction == vpiOutput) {
+        lhs = high;
+        rhs = low;
+    } else if (direction == vpiInput) {
+        lhs = low;
+        rhs = high;
+    } else {
+        throwErrorUnsupported("Only input and output port supported", loc);
+
+        // TODO: RETURN INVALID HERE
+        return cir::ProcessIdx::null();
+    }
+
+    auto assignment = m_ast.emplaceNode<cir::Statement>(name, loc, cir::StatementKind::Assignment);
+    m_ast.getNode(assignment).setLhs(lhs);
+    m_ast.getNode(assignment).setRhs(rhs);
+
+    auto proc_idx = m_ast.emplaceNode<cir::Process>(name, loc, assignment);
+
+    auto& proc = m_ast.getNode(proc_idx);
+    proc.setShouldPopulateSensitivityList(true);
+
+    return proc_idx;
+}
+
+cir::ModulePort SurelogTranslator::parsePortTop(const UHDM::port& port) {
     auto name = port.VpiName();
     auto loc = getLocFromVpi(port);
     auto direction = port.VpiDirection();
@@ -760,13 +855,20 @@ SurelogTranslator::parseContinuousAssignment(const UHDM::cont_assign& assign) {
 cir::SignalIdx SurelogTranslator::getSignalFromRef(const UHDM::ref_obj& ref) {
     std::string_view full_name;
     auto loc = getLocFromVpi(ref);
-    if (auto net = ref.Actual_group<UHDM::net>()) {
-        full_name = net->VpiFullName();
-    } else if (auto var = ref.Actual_group<UHDM::variables>()) {
-        full_name = var->VpiFullName();
-    } else {
-        CD_UNREACHABLE("Reference is neither a net nor a variable");
-    }
+    full_name = ref.VpiFullName();
+
+    // TODO: We should check what the actual object is and if we should get the true
+    //       full name from the actual. It seems to be related to the signal connections
+    //       when in submodules, which could be useful for optimizations.
+    // if (auto net = ref.Actual_group<UHDM::net>()) {
+    //     full_name = net->VpiFullName();
+    // } else if (auto var = ref.Actual_group<UHDM::variables>()) {
+    //     full_name = var->VpiFullName();
+    // } else {
+    //     CD_UNREACHABLE("Reference is neither a net nor a variable");
+    // }
+
+    spdlog::debug("Searching for signal {}", full_name);
 
     auto& scope = m_ast.getNode(m_current_scope);
     auto ast_signal = scope.findSignalByName(m_ast, full_name);
@@ -837,10 +939,12 @@ cir::ExprIdx SurelogTranslator::parseExpr(const UHDM::expr& expr) {
             auto operands = op->Operands();
             CD_ASSERT_NONNULL(operands);
 
-            auto ast_concat = m_ast.emplaceNode<cir::Expr>(name, loc, cir::ExprKind::Concatenation);
+            auto ast_concat = m_ast.emplaceNode<cir::Expr>(
+                name, loc, cir::ExprKind::Concatenation);
 
             for (auto operand : *operands) {
-                auto operand_as_expr = dynamic_cast<const UHDM::expr*>(operand);
+                auto operand_as_expr =
+                    dynamic_cast<const UHDM::expr *>(operand);
                 CD_ASSERT_NONNULL(operand_as_expr);
 
                 auto ast_op = parseExpr(*operand_as_expr);
@@ -912,9 +1016,11 @@ cir::ExprIdx SurelogTranslator::parseExpr(const UHDM::expr& expr) {
 }
 
 cir::SignalIdx SurelogTranslator::parseNet(const UHDM::net& net) {
-    auto name = net.VpiName();
+    // auto name = net.VpiName();
     auto loc = getLocFromVpi(net);
     auto full_name = net.VpiFullName();
+
+    auto name = cleanSignalName(full_name);
 
     // Hopefully this always exists
     auto type_ref = net.Typespec();
@@ -934,9 +1040,11 @@ cir::SignalIdx SurelogTranslator::parseNet(const UHDM::net& net) {
 
 cir::SignalIdx
 SurelogTranslator::parseVariable(const UHDM::variables& variable) {
-    auto name = variable.VpiName();
+    // auto name = variable.VpiName();
     auto loc = getLocFromVpi(variable);
     auto full_name = variable.VpiFullName();
+
+    auto name = cleanSignalName(full_name);
 
     // Hopefully this always exists
     auto type_ref = variable.Typespec();

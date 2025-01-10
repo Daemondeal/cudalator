@@ -79,8 +79,15 @@ SystemVerilogFrontend::compileSvToCir(std::vector<std::string> sources,
         return nullptr;
 
     if (print_udhm_ast) {
-        spdlog::info("Printing udhm ast:");
-        UHDM::visit_object(vpi_design, std::cout);
+
+        auto iter = vpi_iterate(UHDM::uhdmtopModules, vpi_design);
+        while (vpiHandle mod_h = vpi_scan(iter)) {
+            auto name = vpi_get_str(vpiName, mod_h);
+            spdlog::info("Printing udhm ast for {}:", name);
+            UHDM::visit_object(mod_h, std::cout);
+        }
+
+        // auto top = vpi_handle(UHDM::uhdmtopModules, vpi_design);
     }
 
     // Go to the next step

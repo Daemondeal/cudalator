@@ -2,6 +2,7 @@
 
 #include "FrontendError.hpp"
 #include "cir/CIR.h"
+#include "uhdm/module_inst.h"
 
 #include <string_view>
 #include <uhdm/uhdm.h>
@@ -11,9 +12,13 @@ class SurelogTranslator {
 public:
     SurelogTranslator(cir::Ast& ast);
 
+    void parseModuleFlattened(const UHDM::module_inst& module, cir::ModuleIdx module_idx, bool is_top);
+
     cir::ModuleIdx parseModule(const UHDM::module_inst& module);
 
-    cir::ModulePort parsePort(const UHDM::port& port);
+    cir::ModulePort parsePortTop(const UHDM::port& port);
+
+    cir::ProcessIdx parsePortSub(const UHDM::port& port);
 
     cir::SignalIdx parseNet(const UHDM::net& net);
 
@@ -44,7 +49,11 @@ private:
 
     cir::ScopeIdx m_current_scope;
 
+    std::string m_signals_prefix;
+
     cir::SignalIdx getSignalFromRef(const UHDM::ref_obj& ref);
+
+    std::string_view cleanSignalName(std::string_view name);
 
     void throwError(std::string message, cir::Loc loc);
     void throwErrorTodo(std::string message, cir::Loc loc);

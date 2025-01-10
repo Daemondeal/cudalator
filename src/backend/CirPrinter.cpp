@@ -14,6 +14,10 @@ void CirPrinter::printAst(cir::Ast& ast) {
     spdlog::info("Printing AST");
 
     printModule(ast, ast.getTopModule());
+
+    // for (auto& mod : ast.getAllModules()) {
+    //     printModule(ast, mod);
+    // }
 }
 
 void CirPrinter::printPort(cir::Ast& ast, const cir::ModulePort& port) {
