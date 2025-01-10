@@ -108,6 +108,29 @@ public:
         return m_subtype;
     }
 
+    size_t size() const {
+        if (m_kind == TypeKind::Invalid) {
+            return 0;
+        }
+
+        if (m_kind == TypeKind::Int || m_kind == TypeKind::Integer) {
+            return 32;
+        }
+
+        if (m_ranges.size() == 0) {
+            return 1;
+        }
+
+        // CD_ASSERT_MSG(m_ranges.size() < 2, "more than 1 range is unimplemented");
+
+        if (m_ranges.size() == 0) {
+            auto range = firstRange();
+            return range.right() - range.left() + 1;
+        }
+
+        return 0;
+    }
+
 private:
     TypeKind m_kind;
     std::vector<Range> m_ranges;

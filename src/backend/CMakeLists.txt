@@ -4,6 +4,11 @@ add_library(
     ./Backend.hpp
     ./CirPrinter.cpp
     ./CirPrinter.hpp
+    ./CodeGenerator.cpp
+    ./CodeGenerator.hpp
+    ./CppEmitter.cpp
+    ./CppEmitter.hpp
+
     ./PassManager.cpp
     ./PassManager.hpp
     ./passes/PassBase.hpp
