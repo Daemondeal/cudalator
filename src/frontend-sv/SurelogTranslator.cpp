@@ -528,6 +528,10 @@ SurelogTranslator::parseAtomicStmt(const UHDM::atomic_stmt& stmt) {
         CD_ASSERT_MSG(assign_rhs != nullptr,
                       "Interface expr are not supported yet");
 
+        spdlog::warn(
+            "ASSIGNMENT: HANDLE ASSIGNMENT OPERATOR (i.e. +=), SEE LRM 11.4.1 page 275"
+        );
+
         auto lhs = parseExpr(*assign->Lhs());
         auto rhs = parseExpr(*assign_rhs);
 

@@ -84,7 +84,7 @@ public:
     Type(const Type& other) = delete;
     Type& operator=(const Type& other) = delete;
 
-    Type(Type&& other)
+    Type(Type&& other) noexcept
         : m_kind(other.m_kind), m_ranges(std::move(other.m_ranges)),
           m_subtype(other.m_subtype) {}
 
@@ -509,7 +509,7 @@ public:
     Process(const Process& other) = delete;
     Process& operator=(const Process& other) = delete;
 
-    Process(Process&& other)
+    Process(Process&& other) noexcept
         : NodeBase(std::move(other)),
           m_sensitivity_list(std::move(other.m_sensitivity_list)),
           m_statement(other.m_statement),
