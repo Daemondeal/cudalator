@@ -2,9 +2,17 @@ pub mod cir;
 mod frontend;
 mod cir_printer;
 
+use clap::Parser;
 use log::error;
 
 use crate::frontend::sv_frontend;
+
+#[derive(Parser, Debug)]
+#[command(version, about, long_about = None)]
+struct Args {
+    #[arg(index = 1, required = true)]
+    files: Vec<String>,
+}
 
 fn main() -> color_eyre::Result<()> {
     color_eyre::install()?;
@@ -12,7 +20,10 @@ fn main() -> color_eyre::Result<()> {
         .format_timestamp(None)
         .init();
 
-    let ast = sv_frontend::compile_systemverilog(&vec!["./data/rtl/adder.sv".to_owned()]);
+    let args = Args::parse();
+
+
+    let ast = sv_frontend::compile_systemverilog(&args.files);
 
     // TODO: Do this properly
     if let Err(errors) = ast {
