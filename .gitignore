@@ -26,3 +26,9 @@ CMakeUserPresets.json
 # CLion
 .idea/*
 cmake-build-debug/*
+
+# verilog sim
+simv
+*.txt
+runtime_test
+simv
