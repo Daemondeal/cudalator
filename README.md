@@ -6,6 +6,7 @@ Project for the course GPU Programming, a.y. 2024/2025.
 
 1. [How to build](#how-to-build)
 2. [Docs](#docs)
+4. [Libraries](#libraries-used)
 3. [Dependencies](#dependencies)
 
 
@@ -26,6 +27,14 @@ Docs are available at [https://daemondeal.github.io/cudalator/](https://daemonde
 
 
 If you are a contributor, run `mkdocs gh-deploy` whenever you modify the docs.
+
+## Libraries Used
+
+- [Surelog](https://github.com/chipsalliance/Surelog)
+- [spdlog](https://github.com/gabime/spdlog)
+- [fmt 11.0.2](https://github.com/fmtlib/fmt)
+- [argparse 3.1](https://github.com/p-ranav/argparse)
+
 
 ## Dependencies
 

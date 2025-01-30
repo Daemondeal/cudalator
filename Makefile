@@ -5,8 +5,9 @@ EXE := cudalator-compiler
 COMPILER_BUILD := ./build/cudalator
 EXE_PATH := $(COMPILER_BUILD)/$(EXE)
 
-ROOT_DIR := $(shell pwd)
-LIB_DIR := $(ROOT_DIR)/build/libraries
+# ROOT_DIR := $(shell pwd)
+LIB_DIR := ./build/libraries
+FULL_LIB_DIR = $(shell pwd)/build/libraries
 
 $(EXE_PATH): $(COMPILER_BUILD)/build.ninja .dummy
 	cd $(COMPILER_BUILD) && ninja
@@ -15,12 +16,12 @@ $(EXE_PATH): $(COMPILER_BUILD)/build.ninja .dummy
 	@# Used for forcing a rebuild always
 
 run: $(EXE_PATH)
-	$(EXE_PATH) ./data/rtl/adder.sv
+	$(EXE_PATH) ./data/rtl/simple.sv
 
 
-$(COMPILER_BUILD)/build.ninja: CMakeLists.txt $(LIB_DIR)/.timestamp
+$(COMPILER_BUILD)/build.ninja: CMakeLists.txt $(LIB_DIR)/.timestamp $(LIB_DIR)/spdlog.timestamp
 	mkdir -p build
-	cmake -B $(COMPILER_BUILD) -G Ninja
+	cmake -DCMAKE_BUILD_TYPE=Debug -B $(COMPILER_BUILD) -G Ninja
 
 $(LIB_DIR)/.timestamp:
 	@echo '### BUILDING SURELOG ###'
@@ -28,8 +29,17 @@ $(LIB_DIR)/.timestamp:
 
 	mkdir -p $(LIB_DIR)
 	cd ./external/Surelog/ && $(MAKE)
-	cd ./external/Surelog/ && $(MAKE) PREFIX=$(LIB_DIR) install
+	cd ./external/Surelog/ && $(MAKE) PREFIX=$(FULL_LIB_DIR) install
 	touch $(LIB_DIR)/.timestamp
+
+$(LIB_DIR)/spdlog.timestamp:
+	@echo '### BUILDING SPDLOG ###'
+	@echo ''
+
+	mkdir -p $(LIB_DIR)
+	mkdir -p ./external/spdlog/build
+	cd ./external/spdlog/build && cmake .. && cmake --build .
+	touch $(LIB_DIR)/spdlog.timestamp
 
 
 clean:
@@ -37,3 +47,5 @@ clean:
 
 purge:
 	rm -rf build
+	rm -rf ./external/Surelog/build/
+	rm -rf ./external/spdlog/build/

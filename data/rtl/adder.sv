@@ -6,10 +6,7 @@ module adder (
 );
     logic [8:0] full_sum;
 
-    always_comb begin
-        full_sum = a + b;
-    end
-
+    assign full_sum = a + b;
     assign c = full_sum[7:0];
     assign cout = full_sum[8];
 
