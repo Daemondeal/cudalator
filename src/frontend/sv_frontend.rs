@@ -7,9 +7,9 @@ use surelog_sys::{VpiHandle, VpiValue};
 
 use crate::cir::{
     Ast, BinaryOperator, Constant, ConstantIdx, ConstantKind, Expr, ExprIdx, ExprKind, Module,
-    ModuleIdx, ModulePort, PortDirection, Process, ProcessIdx, Scope, ScopeIdx, SensitivtyKind,
-    Signal, SignalIdx, SignalLifetime, Statement, StatementIdx, StatementKind, Token, Type,
-    TypeIdx, TypeKind, UnaryOperator,
+    ModuleIdx, ModulePort, PortDirection, Process, ProcessIdx, Range, Scope, ScopeIdx,
+    SensitivtyKind, Signal, SignalIdx, SignalLifetime, Statement, StatementIdx, StatementKind,
+    Token, Type, TypeIdx, TypeKind, UnaryOperator,
 };
 use surelog_sys::bindings as sl;
 
@@ -33,7 +33,7 @@ struct SvFrontend {
     current_scope: Option<ScopeIdx>,
 }
 
-// Utility
+// Utilities
 fn token_from_vpi(vpi: VpiHandle) -> Token {
     let name = vpi.name();
     let line = vpi.vpi_get(sl::vpiLineNo);
@@ -47,6 +47,49 @@ fn str_to_values_le(value: &str, radix: u32) -> Vec<u32> {
     let big_uint = BigUint::from_str_radix(value, radix).expect("Invalid constant");
 
     big_uint.to_u32_digits()
+}
+
+fn evaluate_constant_to_u32(constant: &Constant) -> Result<u32, FrontendError> {
+    match &constant.kind {
+        ConstantKind::Integer(val) => {
+            if *val < 0 {
+                Err(FrontendError::other(
+                    constant.token.clone(),
+                    format!("Expected positive integer but got negative value"),
+                ))
+            } else if *val > (u32::max_value() as i64) {
+                Err(FrontendError::other(
+                    constant.token.clone(),
+                    format!("Value {val} larger than {}", u32::max_value()),
+                ))
+            } else {
+                Ok(*val as u32)
+            }
+        }
+        ConstantKind::UnsignedInteger(val) => {
+            if *val > (u32::max_value() as u64) {
+                Err(FrontendError::other(
+                    constant.token.clone(),
+                    format!("Value {val} larger than {}", u32::max_value()),
+                ))
+            } else {
+                Ok(*val as u32)
+            }
+        }
+        ConstantKind::Value { vals } => {
+            if vals.len() > 1 {
+                Err(FrontendError::other(
+                    constant.token.clone(),
+                    format!("Value too big"),
+                ))
+            } else if vals.len() == 0 {
+                unreachable!("constant has zero values")
+            } else {
+                Ok(vals[0])
+            }
+        }
+        ConstantKind::Invalid => unreachable!(),
+    }
 }
 
 impl SvFrontend {
@@ -838,13 +881,13 @@ impl SvFrontend {
         self.ast.add_expr(Expr { token, kind })
     }
 
-    fn translate_typespec(&mut self, typespec: VpiHandle) -> TypeIdx {
-        let token = token_from_vpi(typespec);
+    fn translate_typespec(&mut self, typespec_ref: VpiHandle) -> TypeIdx {
+        let token = token_from_vpi(typespec_ref);
 
-        let actual = typespec
+        let typespec = typespec_ref
             .vpi_handle(sl::vpiActual)
             .expect("No actual typespec found");
-        let typ = actual.vpi_type();
+        let typ = typespec.vpi_type();
 
         match typ {
             sl::vpiIntTypespec => {
@@ -868,7 +911,19 @@ impl SvFrontend {
             sl::vpiLogicTypespec => {
                 let is_signed = typespec.vpi_get(sl::vpiSigned) == 1;
 
-                let range = None; // TODO: Implement range
+                let ranges_array = typespec
+                    .vpi_iter(sl::vpiRange)
+                    .map(|r| self.translate_range(r))
+                    .collect::<Vec<_>>();
+
+                let range = if ranges_array.is_empty() {
+                    None
+                } else if ranges_array.len() == 1 {
+                    Some(ranges_array[0].clone())
+                } else {
+                    self.err_unsupported(&token, format_args!("Multiple ranges are unsupported"));
+                    None
+                };
 
                 self.ast.add_typ(Type {
                     token,
@@ -880,7 +935,19 @@ impl SvFrontend {
             sl::vpiBitTypespec => {
                 let is_signed = typespec.vpi_get(sl::vpiSigned) == 1;
 
-                let range = todo!();
+                let ranges_array = typespec
+                    .vpi_iter(sl::vpiRange)
+                    .map(|r| self.translate_range(r))
+                    .collect::<Vec<_>>();
+
+                let range = if ranges_array.is_empty() {
+                    None
+                } else if ranges_array.len() == 1 {
+                    Some(ranges_array[0].clone())
+                } else {
+                    self.err_unsupported(&token, format_args!("Multiple ranges are unsupported"));
+                    None
+                };
 
                 self.ast.add_typ(Type {
                     token,
@@ -944,6 +1011,47 @@ impl SvFrontend {
         };
 
         self.ast.add_constant(Constant { token, size, kind })
+    }
+
+    fn translate_expr_into_u32(&mut self, expr: VpiHandle) -> Option<u32> {
+        let token = token_from_vpi(expr);
+
+        let expr_idx = self.translate_expr(expr);
+        let ast_expr = self.ast.get_expr(expr_idx);
+
+        let ExprKind::Constant { constant: const_idx } = ast_expr.kind else {
+            self.err_unsupported(
+                &token,
+                format_args!("only constants are supported as range indices"),
+            );
+            return None;
+        };
+
+        match evaluate_constant_to_u32(self.ast.get_constant(const_idx)) {
+            Ok(value) => Some(value),
+            Err(err) => {
+                self.errors.push(err);
+                None
+            }
+        }
+    }
+
+    fn translate_range(&mut self, range: VpiHandle) -> Range {
+        let lhs_vpi = range
+            .vpi_handle(sl::vpiLeftRange)
+            .expect("range has no left range");
+
+        let rhs_vpi = range
+            .vpi_handle(sl::vpiRightRange)
+            .expect("range has no left range");
+
+        // NOTE: It's the job of the translate function to put the error in the error
+        //       array, we do it this way so we can report errors for both lhs and rhs.
+        let left = self.translate_expr_into_u32(lhs_vpi).unwrap_or(0);
+        let right = self.translate_expr_into_u32(rhs_vpi).unwrap_or(0);
+
+
+        Range { left, right }
     }
 
     fn get_signal_from_ref(&self, ref_obj: VpiHandle) -> Option<SignalIdx> {

@@ -163,7 +163,7 @@ impl VpiHandle {
         self.vpi_get(bindings::vpiType) as u32
     }
 
-    pub fn vpi_visit(&self) {
+    pub fn vpi_debug_print(&self) {
         unsafe {
             bindings::vpi_visit(self.handle);
         }
