@@ -1,0 +1,3 @@
+[submodule "surelog-sys/external/Surelog"]
+	path = surelog-sys/external/Surelog
+	url = git@github.com:chipsalliance/Surelog.git
