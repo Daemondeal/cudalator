@@ -16,10 +16,12 @@ Project for the course GPU Programming, a.y. 2024/2025.
 git submodule update --init --depth 1 --recursive
 pip install -r requirements.txt
 
+# Compile Surelog and setup the libraries
 make
-```
 
-You can run `make run` to run the code on an example circuit
+# Runs on a sample circuit
+cargo run
+```
 
 ## Docs
 
@@ -31,15 +33,12 @@ If you are a contributor, run `mkdocs gh-deploy` whenever you modify the docs.
 ## Libraries Used
 
 - [Surelog](https://github.com/chipsalliance/Surelog)
-- [spdlog](https://github.com/gabime/spdlog)
-- [fmt 11.0.2](https://github.com/fmtlib/fmt)
-- [argparse 3.1](https://github.com/p-ranav/argparse)
 
 
 ## Dependencies
 
 - CMake (version 3.21 or more)
-- Ninja
+- Rust and Cargo 
 - CUDA
 - Python 3
 - Probably more
