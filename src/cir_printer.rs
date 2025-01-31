@@ -1,9 +1,7 @@
 use std::io::Write;
 
 use crate::cir::{
-    Ast, ConstantIdx, ConstantKind, ExprIdx, ExprKind, ModuleIdx, PortDirection, ProcessIdx,
-    ScopeIdx, SensitivtyKind, SignalIdx, SignalLifetime, StatementIdx, StatementKind, TypeIdx,
-    TypeKind,
+    Ast, ConstantIdx, ConstantKind, ExprIdx, ExprKind, ModuleIdx, PortDirection, ProcessIdx, ScopeIdx, SensitivtyKind, Signal, SignalIdx, SignalLifetime, StatementIdx, StatementKind, TypeIdx, TypeKind
 };
 
 type Res = Result<(), std::io::Error>;
@@ -71,7 +69,11 @@ fn sexpr_convert_process<'a>(ast: &'a Ast, process_idx: ProcessIdx) -> SExpr<'a>
             SensitivtyKind::Negedge => sensitivity.push(SExpr::expr("negedge", vec![signal_atom])),
         };
     }
-    children.push(SExpr::expr("sensitivity", sensitivity));
+    if sensitivity.is_empty() {
+        children.push(SExpr::atom("(sensitivity_empty)"))
+    } else {
+        children.push(SExpr::expr("sensitivity", sensitivity));
+    }
 
     children.push(sexpr_convert_statement(ast, process.statement));
 
@@ -223,10 +225,23 @@ fn sexpr_convert_expr<'a>(ast: &'a Ast, expr_idx: ExprIdx) -> SExpr<'a> {
     }
 }
 
+
+// TODO: Maybe this should remove also the top entity's name
+fn clean_signal_name(signal: &Signal) -> &str {
+    let signal_name = &signal.full_name;
+    let split_name = signal_name.split("@").collect::<Vec<_>>();
+    if split_name.len() > 1{
+        split_name[1]
+    } else {
+        signal_name
+    }
+}
+
 fn sexpr_convert_signal<'a>(ast: &'a Ast, signal_idx: SignalIdx) -> SExpr<'a> {
     let signal = ast.get_signal(signal_idx);
+    let name = clean_signal_name(signal);
 
-    SExpr::atom(&signal.token.name)
+    SExpr::atom(name)
 }
 
 fn sexpr_convert_constant<'a>(ast: &'a Ast, constant_idx: ConstantIdx) -> SExpr<'a> {
@@ -273,7 +288,7 @@ fn sexpr_convert_scope<'a>(ast: &'a Ast, scope_idx: ScopeIdx) -> SExpr<'a> {
     for signal_idx in &scope.signals {
         let signal = ast.get_signal(*signal_idx);
 
-        let signal_name = &signal.token.name;
+        let signal_name = clean_signal_name(signal);
         let signal_type = sexpr_convert_type(ast, signal.typ);
         let signal_lifetime = match signal.lifetime {
             SignalLifetime::Static => SExpr::atom("var_static"),
