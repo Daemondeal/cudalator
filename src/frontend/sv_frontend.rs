@@ -163,8 +163,9 @@ impl SvFrontend {
             } else {
                 // Ports in submodules get automatically connected to the corresponding
                 // signal in the top module
-                let ast_connection = self.translate_port_sub(port);
-                ast_module.processes.push(ast_connection);
+                if let Some(ast_connection) = self.translate_port_sub(port) {
+                    ast_module.processes.push(ast_connection);
+                }
             }
         }
 
@@ -232,8 +233,49 @@ impl SvFrontend {
         })
     }
 
-    fn translate_port_sub(&mut self, port: VpiHandle) -> ProcessIdx {
-        todo!("translate_port_sub")
+    fn translate_port_sub(&mut self, port: VpiHandle) -> Option<ProcessIdx> {
+        let token = token_from_vpi(port);
+
+        let direction = match port.vpi_get(sl::vpiDirection) as u32 {
+            sl::vpiInput => PortDirection::Input,
+            sl::vpiOutput => PortDirection::Output,
+            sl::vpiInout => {
+                self.err_other(&token, format_args!("inout port"));
+                return None;
+            }
+            _ => {
+                self.err_other(&token, format_args!("Invalid port direction"));
+                return None;
+            }
+        };
+
+
+        let low_conn = port.vpi_handle(sl::vpiLowConn).expect("No low conn found");
+        let Some(high_conn) = port.vpi_handle(sl::vpiHighConn) else {
+            warn!("line {}: No high conn fonud for port {}", token.line, token.name);
+            return None;
+        };
+
+        let low = self.translate_expr(low_conn);
+        let high = self.translate_expr(high_conn);
+
+        let (lhs, rhs) = match direction {
+            PortDirection::Input => (low, high),
+            PortDirection::Output => (high, low),
+            _ => unreachable!(),
+        };
+
+        let assignment = self.ast.add_statement(Statement {
+            token: token.clone(),
+            kind: StatementKind::Assignment { lhs, rhs, blocking: false  },
+        });
+
+        Some(self.ast.add_process(Process {
+            token,
+            statement: assignment,
+            sensitivity_list: vec![],
+            should_populate_sensitivity_list: true,
+        }))
     }
 
     fn translate_net(&mut self, net: VpiHandle) -> SignalIdx {
@@ -1124,6 +1166,13 @@ impl SvFrontend {
         self.errors.push(FrontendError::unsupported(
             token.clone(),
             format!("Unsupported {what}"),
+        ))
+    }
+
+    fn err_other(&mut self, token: &Token, what: fmt::Arguments<'_>) {
+        self.errors.push(FrontendError::other(
+            token.clone(),
+            format!("{what}"),
         ))
     }
 
