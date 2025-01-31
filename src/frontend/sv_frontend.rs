@@ -553,7 +553,9 @@ impl SvFrontend {
                 // FIXME: Standard 11.4.1, any left-hand index operation is only supposed to
                 //        be evaluated once, but we don't really have a way to enforce this yet.
                 //        Look into this eventually.
-                let actual_rhs = if op == sl::vpiAssignmentOp {
+                // NOTE : Sometimes the normal assignment returns zero as the operation type. 
+                //        This is not what the standard says but oh well.
+                let actual_rhs = if op == sl::vpiAssignmentOp || op == 0 {
                     rhs
                 } else {
                     let op_kind = match op {
@@ -859,7 +861,7 @@ impl SvFrontend {
                     ExprKind::Invalid
                 }
             }
-            sl::vpiRefObj => {
+            sl::vpiRefObj | sl::vpiRefVar => {
                 if let Some(signal) = self.get_signal_from_ref(expr) {
                     ExprKind::SignalRef { signal }
                 } else {
@@ -867,9 +869,54 @@ impl SvFrontend {
                     ExprKind::Invalid
                 }
             }
-            sl::vpiVariables => {
-                todo!()
+
+            // All variable types
+            sl::vpiLongIntVar
+            | sl::vpiShortIntVar
+            | sl::vpiIntVar
+            | sl::vpiShortRealVar
+            | sl::vpiByteVar
+            | sl::vpiClassVar
+            | sl::vpiStringVar
+            | sl::vpiEnumVar
+            | sl::vpiStructVar
+            | sl::vpiUnionVar
+            | sl::vpiBitVar
+            | sl::vpiReg
+            | sl::vpiRegArray
+            | sl::vpiClassObj
+            | sl::vpiChandleVar
+            | sl::vpiPackedArrayVar
+            | sl::vpiVirtualInterfaceVar => {
+                let full_name = expr.vpi_str(sl::vpiFullName);
+
+                let scope = self
+                    .ast
+                    .get_scope(self.current_scope.expect("Variable outside scope"));
+                let var = scope.find_signal_by_name(&self.ast, &full_name);
+
+                let var_idx = match var {
+                    Some(var_idx) => var_idx,
+
+                    // So, as it turns out sometimes Surelog decides to declare signals
+                    // inside scopes in an expression instead of the vpiVariables field like
+                    // it always does, like for example inside for statement initializers.
+                    // This is a bit hacky, but it should be enough to handle that weird
+                    // behavior.
+                    None => {
+                        let signal_idx = self.translate_variable(expr);
+
+                        let scope = self
+                            .ast
+                            .get_scope_mut(self.current_scope.expect("Variable outside scope"));
+                        scope.signals.push(signal_idx);
+                        signal_idx
+                    }
+                };
+
+                ExprKind::SignalRef { signal: var_idx }
             }
+
             _ => {
                 self.errors.push(FrontendError::unsupported(
                     token.clone(),
@@ -1020,7 +1067,10 @@ impl SvFrontend {
         let expr_idx = self.translate_expr(expr);
         let ast_expr = self.ast.get_expr(expr_idx);
 
-        let ExprKind::Constant { constant: const_idx } = ast_expr.kind else {
+        let ExprKind::Constant {
+            constant: const_idx,
+        } = ast_expr.kind
+        else {
             self.err_unsupported(
                 &token,
                 format_args!("only constants are supported as range indices"),
@@ -1050,7 +1100,6 @@ impl SvFrontend {
         //       array, we do it this way so we can report errors for both lhs and rhs.
         let left = self.translate_expr_into_u32(lhs_vpi).unwrap_or(0);
         let right = self.translate_expr_into_u32(rhs_vpi).unwrap_or(0);
-
 
         Range { left, right }
     }
