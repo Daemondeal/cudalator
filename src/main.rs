@@ -1,11 +1,15 @@
 pub mod cir;
-mod frontend;
+
 mod cir_printer;
+
+mod frontend;
+mod backend;
 
 use clap::Parser;
 use log::error;
 
 use crate::frontend::sv_frontend;
+use crate::backend::pass_manager;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -22,7 +26,6 @@ fn main() -> color_eyre::Result<()> {
 
     let args = Args::parse();
 
-
     let ast = sv_frontend::compile_systemverilog(&args.files);
 
     // TODO: Do this properly
@@ -35,7 +38,10 @@ fn main() -> color_eyre::Result<()> {
     }
 
     // TODO: Make this less ugly
-    let ast = ast.ok().unwrap();
+    let mut ast = ast.ok().unwrap();
+
+    pass_manager::run_passes(&mut ast);
+
 
     let top = ast.get_module(ast.top_module.expect("No top module found"));
     println!("top: {}", top.token.name);
