@@ -13,6 +13,7 @@ fn main() {
         // This flag is needed because otherwise the compiler complains about some unused
         // parameters in the source code of surelog itself, which is not ideal.
         .flag("-Wno-unused-parameter")
+        .flag("-std=c++17")
         .flag("-I./build/surelog/include/")
         .flag("-L./build/surelog/lib/")
         .flag("-lsurelog")
@@ -27,7 +28,10 @@ fn main() {
     println!("cargo:rerun-if-changed=surelog_cpp_wrapper/surelog_cpp_wrapper.cpp");
 
     // Link with the libraries that Surelog itself needs to work.
-    println!("cargo:rustc-link-search=native={}/build/surelog/lib", src_dir);
+    println!(
+        "cargo:rustc-link-search=native={}/build/surelog/lib",
+        src_dir
+    );
     println!("cargo:rustc-link-lib=static=surelog");
     println!("cargo:rustc-link-lib=static=uhdm");
     println!("cargo:rustc-link-lib=static=antlr4-runtime");
