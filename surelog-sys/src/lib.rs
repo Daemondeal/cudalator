@@ -222,7 +222,7 @@ pub fn compile(sources: &[&str]) -> SVDesign {
 
     unsafe {
         let design = bindings::design_create();
-        let handle = bindings::design_compile(design, c_strings.as_ptr(), c_strings.len());
+        let handle = bindings::design_compile(design, c_strings.as_ptr(), c_strings.len() as u64);
 
         SVDesign { design, handle }
     }
