@@ -1,8 +1,10 @@
 #pragma once
 
+// TODO: Find a MacOS-Compatible way of including size_t
 // #include <cstddef>
 #include <uhdm/vpi_user.h>
 #include <uhdm/sv_vpi_user.h>
+#include <uhdm/uhdm_vpi_user.h>
 
 struct SystemVerilogDesign;
 
