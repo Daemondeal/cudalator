@@ -163,7 +163,7 @@ impl VpiHandle {
         self.vpi_get(bindings::vpiType) as u32
     }
 
-    pub fn vpi_visit(&self) {
+    pub fn vpi_debug_print(&self) {
         unsafe {
             bindings::vpi_visit(self.handle);
         }
@@ -222,7 +222,7 @@ pub fn compile(sources: &[&str]) -> SVDesign {
 
     unsafe {
         let design = bindings::design_create();
-        let handle = bindings::design_compile(design, c_strings.as_ptr(), c_strings.len());
+        let handle = bindings::design_compile(design, c_strings.as_ptr(), c_strings.len() as u64);
 
         SVDesign { design, handle }
     }

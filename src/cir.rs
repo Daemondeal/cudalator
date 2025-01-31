@@ -314,6 +314,7 @@ pub struct Type {
     pub is_signed: bool,
 }
 
+#[derive(Clone)]
 pub struct Range {
     pub left: u32,
     pub right: u32,

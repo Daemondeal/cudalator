@@ -1,5 +1,6 @@
 #include "surelog_cpp_wrapper.hpp"
 
+#include <cstddef>
 #include <iostream>
 #include <uhdm/vpi_visitor.h>
 
@@ -64,7 +65,7 @@ SystemVerilogDesign *design_create() {
     return d;
 }
 
-vpiHandle design_compile(SystemVerilogDesign *d, char const* const* sources, size_t sources_len) {
+vpiHandle design_compile(SystemVerilogDesign *d, char const* const* sources, unsigned long long sources_len) {
     return d->compile_to_handle(sources, sources_len);
 };
 

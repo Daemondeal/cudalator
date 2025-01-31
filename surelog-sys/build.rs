@@ -14,6 +14,7 @@ fn main() {
         // parameters in the source code of surelog itself, which is not ideal.
         .flag("-std=c++17")
         .flag("-Wno-unused-parameter")
+        .flag("-std=c++17")
         .flag("-I./build/surelog/include/")
         .flag("-L./build/surelog/lib/")
         .flag("-lsurelog")
