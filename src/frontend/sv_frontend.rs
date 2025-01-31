@@ -562,6 +562,7 @@ impl SvFrontend {
                         sl::vpiMultOp => Some(BinaryOperator::Multiplication),
                         sl::vpiDivOp => Some(BinaryOperator::Division),
                         sl::vpiModOp => Some(BinaryOperator::Modulo),
+                        sl::vpiPowerOp => Some(BinaryOperator::Power),
                         sl::vpiBitAndOp => Some(BinaryOperator::BitwiseAnd),
                         sl::vpiBitOrOp => Some(BinaryOperator::BitwiseOr),
                         sl::vpiBitXorOp => Some(BinaryOperator::BitwiseXor),
