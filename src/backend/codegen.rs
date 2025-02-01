@@ -120,7 +120,12 @@ impl<'a> Codegen<'a> {
         source: &mut CppEmitter<'a, W>,
         header: &mut CppEmitter<'a, W>,
     ) -> Result<()> {
-        self.codegen_struct(header)?;
+        self.codegen_state_struct(header)?;
+        header.emit_empty_line()?;
+        self.codegen_state_struct_diff_object(header)?;
+
+        self.codegen_state_struct_diff(source)?;
+        source.emit_empty_line()?;
 
         let top_module = self.ast.get_module(self.top_module_idx);
         for process in &top_module.processes {
@@ -131,7 +136,83 @@ impl<'a> Codegen<'a> {
         Ok(())
     }
 
-    fn codegen_struct<W: Write>(&self, header: &mut CppEmitter<'a, W>) -> Result<()> {
+    fn codegen_state_struct_diff<W: Write>(&self, source: &mut CppEmitter<'a, W>) -> Result<()> {
+        let top_module = self.ast.get_module(self.top_module_idx);
+        let top_scope = self.ast.get_scope(top_module.scope);
+
+        source.line_start()?;
+
+        match self.target {
+            CodegenTarget::CUDA => {
+                emit!(source, "__global__ ")?;
+            }
+            _ => {}
+        }
+
+        emit!(
+            source,
+            "void state_calculate_diff({}* start, {}* end, {}_diff* diffs)",
+            self.state_struct_name,
+            self.state_struct_name,
+            self.state_struct_name,
+        )?;
+        source.line_end()?;
+
+        source.block_start()?;
+
+        self.codegen_tid(source)?;
+
+        for (i, signal) in top_scope.signals.iter().enumerate() {
+            let signal = self.ast.get_signal(*signal);
+            source.line_start()?;
+
+            emit!(
+                source,
+                "diffs[tid].is_different[{i}] = (start[tid].{} != end[tid].{})",
+                clean_ident(&signal.full_name),
+                clean_ident(&signal.full_name),
+            )?;
+
+            source.line_end_semicolon()?;
+        }
+        source.block_end()?;
+
+        Ok(())
+    }
+
+    fn codegen_state_struct_diff_object<W: Write>(
+        &self,
+        header: &mut CppEmitter<'a, W>,
+    ) -> Result<()> {
+        let top_module = self.ast.get_module(self.top_module_idx);
+        let top_scope = self.ast.get_scope(top_module.scope);
+
+        header.line_start()?;
+        emit!(header, "struct {}_diff", self.state_struct_name)?;
+        header.line_end()?;
+
+        header.block_start()?;
+
+        header.line_start()?;
+        emit!(header, "bool is_different[{}]", top_scope.signals.len())?;
+        header.line_end_semicolon()?;
+
+        header.block_end()?;
+
+        header.line_start()?;
+        emit!(
+            header,
+            "void state_calculate_diff({}* start, {}* end, {}_diff* diffs)",
+            self.state_struct_name,
+            self.state_struct_name,
+            self.state_struct_name,
+        )?;
+        header.line_end_semicolon()?;
+
+        Ok(())
+    }
+
+    fn codegen_state_struct<W: Write>(&self, header: &mut CppEmitter<'a, W>) -> Result<()> {
         let top_module = self.ast.get_module(self.top_module_idx);
         let top_scope = self.ast.get_scope(top_module.scope);
 
@@ -158,16 +239,15 @@ impl<'a> Codegen<'a> {
         file.line_start()?;
 
         match self.target {
-            CodegenTarget::CPU => {
-                emit!(file, "void ")?;
-            }
             CodegenTarget::CUDA => {
-                emit!(file, "__global__ void ")?;
+                emit!(file, "__global__ ")?;
             }
+            _ => {}
         }
+
         emit!(
             file,
-            "process__{} ({} *prev, {} *next, size_t len)",
+            "void process__{} ({} *prev, {} *next, size_t len)",
             process.get_idx(),
             self.state_struct_name,
             self.state_struct_name
@@ -177,16 +257,7 @@ impl<'a> Codegen<'a> {
 
         file.block_start()?;
 
-        file.line_start()?;
-        match self.target {
-            CodegenTarget::CPU => {
-                emit!(file, "int tid = 0")?;
-            }
-            CodegenTarget::CUDA => {
-                emit!(file, "int tid = blockIdx.x * blockSize.x + threadIdx.x")?;
-            }
-        }
-        file.line_end_semicolon()?;
+        self.codegen_tid(file)?;
 
         let stmt = self.ast.get_statement(ast_process.statement);
 
@@ -208,6 +279,12 @@ impl<'a> Codegen<'a> {
     }
 
     fn codegen_scope<W: Write>(&self, file: &mut CppEmitter<'a, W>, scope: ScopeIdx) -> Result<()> {
+        let scope = self.ast.get_scope(scope);
+
+        for signal in &scope.signals {
+            self.codegen_signal_declaration(file, *signal)?;
+        }
+
         Ok(())
     }
 
@@ -304,7 +381,10 @@ impl<'a> Codegen<'a> {
                 emit!(file, ")")?;
                 file.line_end_semicolon()?;
             }
-            StatementKind::Repeat { condition: _, body: _ } => todo!("codegen Repeat"),
+            StatementKind::Repeat {
+                condition: _,
+                body: _,
+            } => todo!("codegen Repeat"),
             StatementKind::For {
                 condition: _,
                 init: _,
@@ -533,6 +613,21 @@ impl<'a> Codegen<'a> {
                 }
             }
         }
+
+        Ok(())
+    }
+
+    fn codegen_tid<W: Write>(&self, source: &mut CppEmitter<'a, W>) -> Result<()> {
+        source.line_start()?;
+        match self.target {
+            CodegenTarget::CPU => {
+                emit!(source, "int tid = 0")?;
+            }
+            CodegenTarget::CUDA => {
+                emit!(source, "int tid = blockIdx.x * blockSize.x + threadIdx.x")?;
+            }
+        }
+        source.line_end_semicolon()?;
 
         Ok(())
     }
