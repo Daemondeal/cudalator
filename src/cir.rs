@@ -3,7 +3,7 @@ use paste::paste;
 #[derive(Copy, Clone)]
 pub struct ScopeIdx(usize);
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct SignalIdx(usize);
 
 #[derive(Copy, Clone)]
