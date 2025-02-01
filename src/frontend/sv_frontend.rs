@@ -16,11 +16,11 @@ use surelog_sys::bindings as sl;
 use super::frontend_errors::FrontendError;
 
 // Entry point for the frontend
-pub fn compile_systemverilog(files: &[String]) -> Result<Ast, Vec<FrontendError>> {
+pub fn compile_systemverilog(files: &[String], top_module: Option<&str>) -> Result<Ast, Vec<FrontendError>> {
     // FIXME: This is a bit ugly, maybe reconsider
     let refs = files.iter().map(|x| x.as_str()).collect::<Vec<_>>();
 
-    let design = surelog_sys::compile(&refs);
+    let design = surelog_sys::compile(&refs, top_module);
 
     let top = design.get_top().expect("No top entity found");
 
@@ -1047,10 +1047,7 @@ impl SvFrontend {
             }
 
             _ => {
-                self.errors.push(FrontendError::unsupported(
-                    token.clone(),
-                    "Unsupported type".to_owned(),
-                ));
+                self.err_other(&token, format_args!("typespec {typ}"));
                 self.ast.add_typ(Type {
                     token,
                     kind: TypeKind::Invalid,

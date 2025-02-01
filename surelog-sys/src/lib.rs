@@ -209,7 +209,7 @@ impl Drop for SVDesign {
     }
 }
 
-pub fn compile(sources: &[&str]) -> SVDesign {
+pub fn compile(sources: &[&str], top_module: Option<&str>) -> SVDesign {
     let c_string_container = sources
         .iter()
         .map(|x| CString::new(*x).unwrap())
@@ -220,9 +220,12 @@ pub fn compile(sources: &[&str]) -> SVDesign {
         .map(|x| x.as_ptr())
         .collect::<Vec<_>>();
 
+    let top = top_module.unwrap_or("");
+    let top_cstring = CString::new(top).unwrap();
+
     unsafe {
         let design = bindings::design_create();
-        let handle = bindings::design_compile(design, c_strings.as_ptr(), c_strings.len() as u64);
+        let handle = bindings::design_compile(design, c_strings.as_ptr(), c_strings.len() as u64, top_cstring.as_ptr());
 
         SVDesign { design, handle }
     }
