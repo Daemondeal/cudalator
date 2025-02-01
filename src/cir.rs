@@ -1,27 +1,27 @@
 use paste::paste;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct ScopeIdx(usize);
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct SignalIdx(usize);
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct ProcessIdx(usize);
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct ModuleIdx(usize);
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct TypeIdx(usize);
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct StatementIdx(usize);
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct ExprIdx(usize);
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct ConstantIdx(usize);
 
 impl ProcessIdx {
@@ -35,15 +35,6 @@ impl ProcessIdx {
 pub struct Token {
     pub name: String,
     pub line: u32,
-}
-
-impl Token {
-    pub fn dummy() -> Self {
-        Self {
-            name: "".to_owned(),
-            line: 0,
-        }
-    }
 }
 
 pub enum PortDirection {
