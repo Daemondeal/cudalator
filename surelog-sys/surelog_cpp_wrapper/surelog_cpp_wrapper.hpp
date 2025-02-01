@@ -11,7 +11,7 @@ struct SystemVerilogDesign;
 extern "C" {
 
 SystemVerilogDesign* design_create();
-vpiHandle design_compile(SystemVerilogDesign* d, char const* const* sources, unsigned long long sources_len);
+vpiHandle design_compile(SystemVerilogDesign* d, char const* const* sources, unsigned long long sources_len, char const* top_module);
 void design_free(SystemVerilogDesign* d);
 
 vpiHandle design_top_entity(vpiHandle design);
