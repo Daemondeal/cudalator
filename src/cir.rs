@@ -24,6 +24,12 @@ pub struct ExprIdx(usize);
 #[derive(Copy, Clone)]
 pub struct ConstantIdx(usize);
 
+impl ProcessIdx {
+    pub fn get_idx(&self) -> u32 {
+        self.0 as u32
+    }
+}
+
 // TODO: Maybe this needs another name
 #[derive(Clone)]
 pub struct Token {
@@ -251,7 +257,7 @@ impl BinaryOperator {
 pub enum ExprKind {
     Invalid,
     Constant {
-        constant: ConstantIdx
+        constant: ConstantIdx,
     },
     Unary {
         op: UnaryOperator,
@@ -320,6 +326,16 @@ pub struct Type {
 pub struct Range {
     pub left: u32,
     pub right: u32,
+}
+
+impl Range {
+    pub fn size(&self) -> u32 {
+        if self.left > self.right {
+            1 + self.left - self.right
+        } else {
+            1 + self.right - self.left
+        }
+    }
 }
 
 pub enum ConstantKind {
