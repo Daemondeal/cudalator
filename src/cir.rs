@@ -24,6 +24,7 @@ pub struct ExprIdx(usize);
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct ConstantIdx(usize);
 
+// FIXME: We should probably have a better way of having unique ids for processes
 impl ProcessIdx {
     pub fn get_idx(&self) -> u32 {
         self.0 as u32

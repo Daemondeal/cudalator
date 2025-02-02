@@ -1,5 +1,5 @@
 use core::fmt;
-use std::io::Write;
+use std::{collections::HashMap, io::Write};
 
 use color_eyre::Result;
 
@@ -95,23 +95,41 @@ fn clean_ident(ident: &str) -> String {
     ident.replace("@", "__").replace(".", "__")
 }
 
+fn process_name(process_idx: ProcessIdx) -> String {
+    format!("process__{}", process_idx.get_idx())
+}
+
 struct Codegen<'a> {
     ast: &'a Ast,
     top_module_idx: ModuleIdx,
-    state_struct_name: String,
     target: CodegenTarget,
+
+    top_name: String,
+
+    top_signal_map: HashMap<SignalIdx, usize>,
 }
 
 impl<'a> Codegen<'a> {
     pub fn new(ast: &'a Ast, target: CodegenTarget) -> Self {
         let top_module_idx = ast.top_module.expect("No top module found");
-        let state_struct_name = clean_ident(&ast.get_module(top_module_idx).token.name);
+
+        let top_module = ast.get_module(top_module_idx);
+        let top_scope = ast.get_scope(top_module.scope);
+        let top_name = clean_ident(&top_module.token.name);
+
+        let mut top_signal_map = HashMap::new();
+        let mut counter = 0;
+        for signal in &top_scope.signals {
+            top_signal_map.insert(*signal, counter);
+            counter += 1;
+        }
 
         Self {
             ast,
             top_module_idx,
-            state_struct_name,
             target,
+            top_name,
+            top_signal_map,
         }
     }
 
@@ -120,11 +138,27 @@ impl<'a> Codegen<'a> {
         source: &mut CppEmitter<'a, W>,
         header: &mut CppEmitter<'a, W>,
     ) -> Result<()> {
-        self.codegen_state_struct(header)?;
+        // Header
+        emit!(header, "#pragma once\n")?;
+        emit!(header, "#include \"Process.hpp\"\n")?;
+        emit!(header, "#include <vector>\n")?;
+        emit!(header, "#include <cstddef>\n")?;
         header.emit_empty_line()?;
-        self.codegen_state_struct_diff_object(header)?;
 
-        self.codegen_state_struct_diff(source)?;
+        self.codegen_state_header(header)?;
+        header.emit_empty_line()?;
+
+        self.codegen_diff_header(header)?;
+        header.emit_empty_line()?;
+
+        self.codegen_process_container_header(header)?;
+        header.emit_empty_line()?;
+
+        // Source
+        emit!(source, "#include \"module.hpp\"\n")?;
+        source.emit_empty_line()?;
+
+        self.codegen_diff_source(source)?;
         source.emit_empty_line()?;
 
         let top_module = self.ast.get_module(self.top_module_idx);
@@ -133,10 +167,13 @@ impl<'a> Codegen<'a> {
             source.emit_empty_line()?;
         }
 
+        self.codegen_process_container_source(source)?;
+        source.emit_empty_line()?;
+
         Ok(())
     }
 
-    fn codegen_state_struct_diff<W: Write>(&self, source: &mut CppEmitter<'a, W>) -> Result<()> {
+    fn codegen_diff_source<W: Write>(&self, source: &mut CppEmitter<'a, W>) -> Result<()> {
         let top_module = self.ast.get_module(self.top_module_idx);
         let top_scope = self.ast.get_scope(top_module.scope);
 
@@ -151,10 +188,10 @@ impl<'a> Codegen<'a> {
 
         emit!(
             source,
-            "void state_calculate_diff({}* start, {}* end, {}_diff* diffs)",
-            self.state_struct_name,
-            self.state_struct_name,
-            self.state_struct_name,
+            "void state_calculate_diff(state_{}* start, state_{}* end, diff_{}* diffs)",
+            self.top_name,
+            self.top_name,
+            self.top_name,
         )?;
         source.line_end()?;
 
@@ -180,15 +217,76 @@ impl<'a> Codegen<'a> {
         Ok(())
     }
 
-    fn codegen_state_struct_diff_object<W: Write>(
+    fn codegen_process_container_header<W: Write>(
         &self,
         header: &mut CppEmitter<'a, W>,
     ) -> Result<()> {
+        header.line_start()?;
+        emit!(
+            header,
+            "std::vector<Process<state_{}>> make_processes()",
+            self.top_name
+        )?;
+        header.line_end_semicolon()?;
+
+        Ok(())
+    }
+
+    fn codegen_process_container_source<W: Write>(
+        &self,
+        source: &mut CppEmitter<'a, W>,
+    ) -> Result<()> {
+        source.line_start()?;
+        emit!(
+            source,
+            "std::vector<Process<state_{}>> make_processes()",
+            self.top_name
+        )?;
+        source.line_end()?;
+
+        source.block_start()?;
+
+        source.line_start()?;
+        emit!(
+            source,
+            "std::vector<Process<state_{}>> result",
+            self.top_name
+        )?;
+        source.line_end_semicolon()?;
+
+        let top_module = self.ast.get_module(self.top_module_idx);
+        for process in &top_module.processes {
+            let ast_process = self.ast.get_process(*process);
+
+            source.line_start()?;
+            emit!(source, "result.push_back(Process<state_{}>(", self.top_name)?;
+            emit!(source, "{}, ", process_name(*process))?;
+
+            // Emit the list of the ids of all signals inside the sensitivity list 
+            // TODO: Support negedge and posedge
+            let signals = ast_process.sensitivity_list.iter().map(|(_, idx)| {
+                self.top_signal_map
+                    .get(idx)
+                    .expect("signal not found in codegen")
+                    .to_string()
+            }).collect::<Vec<_>>().join(", ");
+
+
+            emit!(source, "{{{signals}}})")?;
+            source.line_end_semicolon()?;
+        }
+
+        source.block_end()?;
+
+        Ok(())
+    }
+
+    fn codegen_diff_header<W: Write>(&self, header: &mut CppEmitter<'a, W>) -> Result<()> {
         let top_module = self.ast.get_module(self.top_module_idx);
         let top_scope = self.ast.get_scope(top_module.scope);
 
         header.line_start()?;
-        emit!(header, "struct {}_diff", self.state_struct_name)?;
+        emit!(header, "struct diff_{}", self.top_name)?;
         header.line_end()?;
 
         header.block_start()?;
@@ -198,26 +296,27 @@ impl<'a> Codegen<'a> {
         header.line_end_semicolon()?;
 
         header.block_end()?;
+        header.emit_empty_line()?;
 
         header.line_start()?;
         emit!(
             header,
-            "void state_calculate_diff({}* start, {}* end, {}_diff* diffs)",
-            self.state_struct_name,
-            self.state_struct_name,
-            self.state_struct_name,
+            "void state_calculate_diff(state_{}* start, state_{}* end, diff_{}* diffs)",
+            self.top_name,
+            self.top_name,
+            self.top_name,
         )?;
         header.line_end_semicolon()?;
 
         Ok(())
     }
 
-    fn codegen_state_struct<W: Write>(&self, header: &mut CppEmitter<'a, W>) -> Result<()> {
+    fn codegen_state_header<W: Write>(&self, header: &mut CppEmitter<'a, W>) -> Result<()> {
         let top_module = self.ast.get_module(self.top_module_idx);
         let top_scope = self.ast.get_scope(top_module.scope);
 
         header.line_start()?;
-        emit!(header, "struct {}", self.state_struct_name)?;
+        emit!(header, "struct state_{}", self.top_name)?;
         header.line_end()?;
 
         header.block_start()?;
@@ -247,10 +346,10 @@ impl<'a> Codegen<'a> {
 
         emit!(
             file,
-            "void process__{} ({} *prev, {} *next, size_t len)",
-            process.get_idx(),
-            self.state_struct_name,
-            self.state_struct_name
+            "void {} (state_{} *prev, state_{} *next, size_t len)",
+            process_name(process),
+            self.top_name,
+            self.top_name
         )?;
 
         file.line_end()?;
