@@ -140,7 +140,8 @@ impl<'a> Codegen<'a> {
     ) -> Result<()> {
         // Header
         emit!(header, "#pragma once\n")?;
-        emit!(header, "#include \"Process.hpp\"\n")?;
+        emit!(header, "#include \"../runtime/Process.hpp\"\n")?;
+        emit!(header, "#include \"../runtime/Bit.hpp\"\n")?;
         emit!(header, "#include <vector>\n")?;
         emit!(header, "#include <cstddef>\n")?;
         header.emit_empty_line()?;
@@ -152,6 +153,9 @@ impl<'a> Codegen<'a> {
         header.emit_empty_line()?;
 
         self.codegen_process_container_header(header)?;
+        header.emit_empty_line()?;
+
+        self.codegen_top_struct_header(header)?;
         header.emit_empty_line()?;
 
         // Source
@@ -169,6 +173,25 @@ impl<'a> Codegen<'a> {
 
         self.codegen_process_container_source(source)?;
         source.emit_empty_line()?;
+
+        Ok(())
+    }
+
+    fn codegen_top_struct_header<W: Write>(&self, header: &mut CppEmitter<'a, W>) -> Result<()> {
+        // header.line_start()?;
+        // emit!(header, "struct {}", self.top_name)?;
+        // header.line_end()?;
+        //
+        // header.block_start()?;
+        // header.block_end_semicolon()?;
+
+        header.line_start()?;
+        emit!(header, "using DiffType = diff_{}", self.top_name)?;
+        header.line_end_semicolon()?;
+
+        header.line_start()?;
+        emit!(header, "using StateType = state_{}", self.top_name)?;
+        header.line_end_semicolon()?;
 
         Ok(())
     }
@@ -262,20 +285,27 @@ impl<'a> Codegen<'a> {
             emit!(source, "result.push_back(Process<state_{}>(", self.top_name)?;
             emit!(source, "{}, ", process_name(*process))?;
 
-            // Emit the list of the ids of all signals inside the sensitivity list 
+            // Emit the list of the ids of all signals inside the sensitivity list
             // TODO: Support negedge and posedge
-            let signals = ast_process.sensitivity_list.iter().map(|(_, idx)| {
-                self.top_signal_map
-                    .get(idx)
-                    .expect("signal not found in codegen")
-                    .to_string()
-            }).collect::<Vec<_>>().join(", ");
+            let signals = ast_process
+                .sensitivity_list
+                .iter()
+                .map(|(_, idx)| {
+                    self.top_signal_map
+                        .get(idx)
+                        .expect("signal not found in codegen")
+                        .to_string()
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
 
-
-            emit!(source, "{{{signals}}})")?;
+            emit!(source, "{{{signals}}}))")?;
             source.line_end_semicolon()?;
         }
 
+        source.line_start()?;
+        emit!(source, "return result")?;
+        source.line_end_semicolon()?;
         source.block_end()?;
 
         Ok(())
@@ -295,7 +325,7 @@ impl<'a> Codegen<'a> {
         emit!(header, "bool is_different[{}]", top_scope.signals.len())?;
         header.line_end_semicolon()?;
 
-        header.block_end()?;
+        header.block_end_semicolon()?;
         header.emit_empty_line()?;
 
         header.line_start()?;

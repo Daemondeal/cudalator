@@ -6,8 +6,9 @@ mod backend;
 mod frontend;
 
 use std::fs::{self, File};
-use std::io::{BufReader, BufWriter, Read, Write};
+use std::io::{self, BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 
 use backend::codegen::CodegenTarget;
 use cir::Ast;
@@ -60,12 +61,13 @@ fn main() -> Result<()> {
     }
 
     prepare_output_folder(&args)?;
+    let codegen_folder = args.output_folder.join("src").join("codegen");
 
-    let path_header = args.output_folder.join("module.hpp");
+    let path_header = codegen_folder.join("module.hpp");
     let path_source = if args.target_is_cpu {
-        args.output_folder.join("module.cpp")
+        codegen_folder.join("module.cpp")
     } else {
-        args.output_folder.join("module.cu")
+        codegen_folder.join("module.cu")
     };
 
     codegen_into_files(&args, &ast, &path_header, &path_source)?;
@@ -132,7 +134,43 @@ fn prepare_output_folder(args: &Args) -> Result<()> {
         // TODO: Check that the required files are inside the folder already
     }
 
-    fs::create_dir_all(&args.output_folder)?;
+    let output = &args.output_folder;
+    let template_folder = PathBuf::from_str("./data/runtime")?;
+    let src_dir = output.join("src");
 
+    fs::create_dir_all(output)?;
+
+    fs::create_dir_all(&src_dir)?;
+
+    if !fs::exists(src_dir.join("main.cpp"))? {
+        fs::copy(
+            template_folder.join("src").join("main.cpp"),
+            src_dir.join("main.cpp"),
+        )?;
+    }
+
+    copy_dir_all(template_folder.join("src").join("runtime"), src_dir.join("runtime"))?;
+    fs::create_dir_all(src_dir.join("codegen"))?;
+    fs::copy(
+        template_folder.join("CMakeLists.txt"),
+        output.join("CMakeLists.txt"),
+    )?;
+    fs::copy(template_folder.join("Makefile"), output.join("Makefile"))?;
+
+    Ok(())
+}
+
+// https://stackoverflow.com/a/65192210
+fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> io::Result<()> {
+    fs::create_dir_all(&dst)?;
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+        if ty.is_dir() {
+            copy_dir_all(entry.path(), dst.as_ref().join(entry.file_name()))?;
+        } else {
+            fs::copy(entry.path(), dst.as_ref().join(entry.file_name()))?;
+        }
+    }
     Ok(())
 }
