@@ -31,6 +31,12 @@ impl ProcessIdx {
     }
 }
 
+impl SignalIdx {
+    pub fn get_idx(&self) -> u32 {
+        self.0 as u32
+    }
+}
+
 // TODO: Maybe this needs another name
 #[derive(Clone)]
 pub struct Token {
@@ -63,6 +69,7 @@ pub struct Scope {
 
     pub parent: Option<ScopeIdx>,
     pub signals: Vec<SignalIdx>,
+    pub is_top: bool,
 }
 
 impl Scope {
@@ -279,6 +286,7 @@ pub enum ExprKind {
     },
 }
 
+#[derive(PartialEq, Eq)]
 pub enum SignalLifetime {
     Static,
     Automatic,
@@ -291,6 +299,7 @@ pub struct Signal {
     pub typ: TypeIdx,
     pub lifetime: SignalLifetime,
     pub full_name: String,
+    pub scope: ScopeIdx,
 }
 
 pub struct Expr {

@@ -17,7 +17,7 @@ impl FrontendError {
     pub fn new(token: Token, message: String, kind: FrontendErrorKind) -> Self {
         Self {
             token,
-            message: message,
+            message,
             kind,
         }
     }
