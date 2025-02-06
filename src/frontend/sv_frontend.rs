@@ -1,4 +1,5 @@
 use core::fmt;
+use std::collections::HashMap;
 
 use log::warn;
 use num_bigint::BigUint;
@@ -26,6 +27,10 @@ pub fn compile_systemverilog(files: &[String], top_module: Option<&str>) -> Resu
 
     SvFrontend::translate_design(top)
 }
+
+// struct ProcessContext {
+//     blocking_assign_alias: HashMap<SignalIdx>
+// }
 
 struct SvFrontend {
     ast: Ast,
@@ -122,6 +127,7 @@ impl SvFrontend {
             token: token.clone(),
             parent: None,
             signals: vec![],
+            is_top: true,
         });
 
         self.current_scope = Some(scope_idx);
@@ -287,11 +293,13 @@ impl SvFrontend {
         let type_spec = net.vpi_handle(sl::vpiTypespec).expect("No type spec found");
         let type_idx = self.translate_typespec(type_spec);
 
+        // TODO: Add the signal directly to the scope inside this function
         self.ast.add_signal(Signal {
             token,
             full_name,
             typ: type_idx,
             lifetime: SignalLifetime::Net,
+            scope: self.current_scope.expect("Initalizating signal out of scoe"),
         })
     }
 
@@ -315,6 +323,7 @@ impl SvFrontend {
             full_name,
             typ: type_idx,
             lifetime,
+            scope: self.current_scope.expect("Signal declared outside a scope"),
         })
     }
 
@@ -417,6 +426,7 @@ impl SvFrontend {
                         token: token.clone(),
                         parent: self.current_scope,
                         signals: scope_signals,
+                        is_top: false,
                     });
 
                     // Push scope
@@ -452,6 +462,7 @@ impl SvFrontend {
                     token: token.clone(),
                     parent: self.current_scope,
                     signals: scope_signals,
+                    is_top: false,
                 });
 
                 // Push scope

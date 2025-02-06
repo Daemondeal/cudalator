@@ -5,7 +5,8 @@ use color_eyre::Result;
 
 use crate::cir::{
     Ast, BinaryOperator, ConstantIdx, ConstantKind, ExprIdx, ExprKind, ModuleIdx, ProcessIdx,
-    ScopeIdx, SignalIdx, StatementIdx, StatementKind, TypeIdx, TypeKind, UnaryOperator,
+    ScopeIdx, SignalIdx, SignalLifetime, StatementIdx, StatementKind, TypeIdx, TypeKind,
+    UnaryOperator,
 };
 
 pub enum CodegenTarget {
@@ -223,14 +224,13 @@ impl<'a> Codegen<'a> {
         self.codegen_tid(source)?;
 
         for (i, signal) in top_scope.signals.iter().enumerate() {
-            let signal = self.ast.get_signal(*signal);
             source.line_start()?;
 
             emit!(
                 source,
                 "diffs[tid].is_different[{i}] = (start[tid].{} != end[tid].{})",
-                clean_ident(&signal.full_name),
-                clean_ident(&signal.full_name),
+                self.signal_name(*signal),
+                self.signal_name(*signal)
             )?;
 
             source.line_end_semicolon()?;
@@ -411,7 +411,9 @@ impl<'a> Codegen<'a> {
         let scope = self.ast.get_scope(scope);
 
         for signal in &scope.signals {
-            self.codegen_signal_declaration(file, *signal)?;
+            if self.ast.get_signal(*signal).lifetime == SignalLifetime::Automatic {
+                self.codegen_signal_declaration(file, *signal)?;
+            }
         }
 
         Ok(())
@@ -657,50 +659,24 @@ impl<'a> Codegen<'a> {
             }
             ExprKind::Concatenation { exprs: _ } => todo!("codegen Concatenation"),
             ExprKind::PartSelect { lhs, rhs, target } => {
-                if is_prev {
-                    emit!(file, "prev[tid].")?;
-                } else {
-                    emit!(file, "next[tid].")?;
-                }
-                self.codegen_signal_name(file, *target)?;
+                self.codegen_signal_ref(file, *target, is_prev)?;
                 emit!(file, ".select_part(")?;
-                self.codegen_expr(file, *lhs, is_prev)?;
+                self.codegen_expr(file, *lhs, false)?;
                 emit!(file, ", ")?;
-                self.codegen_expr(file, *rhs, is_prev)?;
+                self.codegen_expr(file, *rhs, false)?;
                 emit!(file, ")")?;
             }
             ExprKind::BitSelect { expr, target } => {
-                if is_prev {
-                    emit!(file, "prev[tid].")?;
-                } else {
-                    emit!(file, "next[tid].")?;
-                }
-                self.codegen_signal_name(file, *target)?;
+                self.codegen_signal_ref(file, *target, is_prev)?;
                 emit!(file, ".select_bit(")?;
-                self.codegen_expr(file, *expr, is_prev)?;
+                self.codegen_expr(file, *expr, false)?;
                 emit!(file, ")")?;
             }
             ExprKind::SignalRef { signal } => {
-                if is_prev {
-                    emit!(file, "prev[tid].")?;
-                } else {
-                    emit!(file, "next[tid].")?;
-                }
-                self.codegen_signal_name(file, *signal)?;
+                self.codegen_signal_ref(file, *signal, is_prev)?;
             }
             ExprKind::Invalid => unreachable!(),
         };
-
-        Ok(())
-    }
-
-    fn codegen_signal_name<W: Write>(
-        &self,
-        file: &mut CppEmitter<'a, W>,
-        signal: SignalIdx,
-    ) -> Result<()> {
-        let signal = self.ast.get_signal(signal);
-        emit!(file, "{}", clean_ident(&signal.full_name))?;
 
         Ok(())
     }
@@ -714,8 +690,7 @@ impl<'a> Codegen<'a> {
 
         file.line_start()?;
         self.codegen_type(file, ast_signal.typ)?;
-        emit!(file, " ")?;
-        self.codegen_signal_name(file, signal)?;
+        emit!(file, " {}", self.signal_name(signal))?;
 
         file.line_end_semicolon()?;
 
@@ -757,6 +732,36 @@ impl<'a> Codegen<'a> {
             }
         }
         source.line_end_semicolon()?;
+
+        Ok(())
+    }
+
+    fn signal_name(&self, idx: SignalIdx) -> String {
+        let signal = self.ast.get_signal(idx);
+        format!("{}_{}", clean_ident(&signal.full_name), idx.get_idx())
+    }
+
+    // Generate the name to refer to a signal inside a kernel
+    fn codegen_signal_ref<W: Write>(
+        &self,
+        file: &mut CppEmitter<'a, W>,
+        idx: SignalIdx,
+        is_prev: bool,
+    ) -> Result<()> {
+        let signal = self.ast.get_signal(idx);
+
+        match signal.lifetime {
+            // Automatic signals can simply be local variables
+            SignalLifetime::Automatic => {
+                emit!(file, "{}_{}", clean_ident(&signal.full_name), idx.get_idx())?;
+            }
+
+            SignalLifetime::Static | SignalLifetime::Net => {
+                let array_name = if is_prev { "prev" } else { "next" };
+
+                emit!(file, "{array_name}[tid].{}", self.signal_name(idx))?;
+            }
+        }
 
         Ok(())
     }
