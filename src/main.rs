@@ -6,7 +6,7 @@ mod backend;
 mod frontend;
 
 use std::fs::{self, File};
-use std::io::{self, BufReader, BufWriter, Read, Write};
+use std::io::{self, BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
@@ -44,6 +44,9 @@ struct Args {
 
     #[arg(long = "cpu", help = "Generate code meant to run on CPUs")]
     target_is_cpu: bool,
+
+    #[arg(long = "print-output", help = "Print the output generated code after codegen")]
+    print_output: bool,
 }
 
 fn main() -> Result<()> {
@@ -72,14 +75,16 @@ fn main() -> Result<()> {
 
     codegen_into_files(&args, &ast, &path_header, &path_source)?;
 
-    // FIXME: REMOVE THIS, THIS IS ONLY FOR DEBUG PURPOSES
-    println!("{path_header:?}:");
-    let header_contents = fs::read_to_string(&path_header)?;
-    println!("{header_contents}");
+    if args.print_output {
+        // FIXME: REMOVE THIS, THIS IS ONLY FOR DEBUG PURPOSES
+        println!("{path_header:?}:");
+        let header_contents = fs::read_to_string(&path_header)?;
+        println!("{header_contents}");
 
-    println!("{path_source:?}:");
-    let source_contents = fs::read_to_string(&path_source)?;
-    println!("{source_contents}");
+        println!("{path_source:?}:");
+        let source_contents = fs::read_to_string(&path_source)?;
+        println!("{source_contents}");
+    }
 
     Ok(())
 }
