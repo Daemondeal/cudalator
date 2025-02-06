@@ -428,6 +428,8 @@ impl<'a> Codegen<'a> {
 
         match &statement.kind {
             StatementKind::Assignment { lhs, rhs, blocking } => {
+                assert!(*blocking == false, "found a blocking assignment during codegen, this is a bug.");
+
                 file.line_start()?;
                 self.codegen_expr(file, *lhs, false)?;
                 emit!(file, " = ")?;

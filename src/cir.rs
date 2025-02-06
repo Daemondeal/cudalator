@@ -286,7 +286,7 @@ pub enum ExprKind {
     },
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Debug)]
 pub enum SignalLifetime {
     Static,
     Automatic,

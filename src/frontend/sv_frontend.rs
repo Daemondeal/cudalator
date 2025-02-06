@@ -941,7 +941,11 @@ impl SvFrontend {
             | sl::vpiChandleVar
             | sl::vpiPackedArrayVar
             | sl::vpiVirtualInterfaceVar => {
+                println!("Line {}: Signal declared through var", token.line);
                 let full_name = expr.vpi_str(sl::vpiFullName);
+                // TODO: I can't find where this is specified, but it seems like if a signal is
+                //       referred directly rather than through a reference, the expression where it
+                //       is found is the initializer. Implement a way to detect this.
 
                 let scope = self
                     .ast
