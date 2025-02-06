@@ -8,7 +8,7 @@ int u;
 
 
 initial
-    $monitor("[%03t] a: %03d b: %03d x: %03d y: %03d u: %3d", $time, a, b, x, y, u);
+    $monitor("[%3t] a: %3d b: %3d x: %3d y: %3d u: %3d", $time, a, b, x, y, u);
 
 always_comb begin
     static int z = 0;
