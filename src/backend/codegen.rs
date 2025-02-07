@@ -391,7 +391,10 @@ impl<'a> Codegen<'a> {
         let stmt = self.ast.get_statement(ast_process.statement);
 
         match &stmt.kind {
-            StatementKind::Block { statements } => {
+            StatementKind::Block {
+                statements,
+                scope: _,
+            } => {
                 for statement in statements {
                     self.codegen_statement(file, *statement)?;
                 }
@@ -427,33 +430,61 @@ impl<'a> Codegen<'a> {
         let statement = self.ast.get_statement(statement);
 
         match &statement.kind {
-            StatementKind::Assignment { lhs, rhs, blocking } => {
-                assert!(*blocking == false, "found a blocking assignment during codegen, this is a bug.");
-
+            StatementKind::SimpleAssignment {
+                target,
+                source,
+                blocking: _,
+            } => {
                 file.line_start()?;
-                self.codegen_expr(file, *lhs, false)?;
+                self.codegen_signal_ref(file, *target, false)?;
                 emit!(file, " = ")?;
-                self.codegen_expr(file, *rhs, true)?;
+                self.codegen_expr(file, *source, true)?;
                 file.line_end_semicolon()?;
-
-                if !blocking {
-                    file.line_start()?;
-                    self.codegen_expr(file, *lhs, true)?;
-                    emit!(file, " = ")?;
-                    self.codegen_expr(file, *lhs, false)?;
-                    file.line_end_semicolon()?;
-                }
             }
-            StatementKind::Block { statements } => {
-                file.block_start()?;
-
-                for statement in statements {
-                    self.codegen_statement(file, *statement)?;
-                }
-
-                file.block_end()?;
+            StatementKind::SimpleAssignmentParts {
+                target,
+                source,
+                from,
+                to,
+                blocking: _,
+            } => {
+                file.line_start()?;
+                self.codegen_signal_ref(file, *target, false)?;
+                emit!(file, ".set_parts(")?;
+                self.codegen_expr(file, *from, false)?;
+                emit!(file, ", ")?;
+                self.codegen_expr(file, *to, false)?;
+                emit!(file, ", ")?;
+                self.codegen_expr(file, *source, true)?;
+                file.line_end_semicolon()?;
             }
-            StatementKind::ScopedBlock { statements, scope } => {
+            StatementKind::Assignment {
+                lhs: _,
+                rhs: _,
+                blocking: _,
+            } => {
+                unreachable!();
+
+                // assert!(
+                //     *blocking == false,
+                //     "found a blocking assignment during codegen, this is a bug."
+                // );
+                //
+                // file.line_start()?;
+                // self.codegen_expr(file, *lhs, false)?;
+                // emit!(file, " = ")?;
+                // self.codegen_expr(file, *rhs, true)?;
+                // file.line_end_semicolon()?;
+                //
+                // if !blocking {
+                //     file.line_start()?;
+                //     self.codegen_expr(file, *lhs, true)?;
+                //     emit!(file, " = ")?;
+                //     self.codegen_expr(file, *lhs, false)?;
+                //     file.line_end_semicolon()?;
+                // }
+            }
+            StatementKind::Block { statements, scope } => {
                 file.block_start()?;
 
                 self.codegen_scope(file, *scope)?;
@@ -464,16 +495,7 @@ impl<'a> Codegen<'a> {
 
                 file.block_end()?;
             }
-            StatementKind::If { condition, body } => {
-                file.line_start()?;
-                emit!(file, "if (")?;
-                self.codegen_expr(file, *condition, true)?;
-                emit!(file, ")")?;
-                file.line_end()?;
-
-                self.codegen_statement(file, *body)?;
-            }
-            StatementKind::IfElse {
+            StatementKind::If {
                 condition,
                 body,
                 else_,
@@ -486,11 +508,13 @@ impl<'a> Codegen<'a> {
 
                 self.codegen_statement(file, *body)?;
 
-                file.line_start()?;
-                emit!(file, "else")?;
-                file.line_end()?;
+                if let Some(else_) = else_ {
+                    file.line_start()?;
+                    emit!(file, "else")?;
+                    file.line_end()?;
 
-                self.codegen_statement(file, *else_)?;
+                    self.codegen_statement(file, *else_)?;
+                }
             }
             StatementKind::While { condition, body } => {
                 file.line_start()?;
@@ -514,26 +538,8 @@ impl<'a> Codegen<'a> {
                 emit!(file, ")")?;
                 file.line_end_semicolon()?;
             }
-            StatementKind::Repeat {
-                condition: _,
-                body: _,
-            } => todo!("codegen Repeat"),
-            StatementKind::For {
-                condition: _,
-                init: _,
-                increment: _,
-                body: _,
-                scope: _,
-            } => todo!("codegen For"),
             StatementKind::Case => todo!("codegen Case"),
             StatementKind::Foreach => todo!("codegen Foreach"),
-            StatementKind::Forever { body } => {
-                file.line_start()?;
-                emit!(file, "while (true)")?;
-                file.line_end()?;
-
-                self.codegen_statement(file, *body)?;
-            }
             StatementKind::Return { expr } => {
                 file.line_start()?;
                 emit!(file, "return ")?;

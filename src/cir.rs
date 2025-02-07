@@ -44,6 +44,15 @@ pub struct Token {
     pub line: u32,
 }
 
+impl Token {
+    pub fn dummy() -> Self {
+        Self {
+            line: 0,
+            name: "".to_string(),
+        }
+    }
+}
+
 pub enum PortDirection {
     Input,
     Output,
@@ -73,16 +82,25 @@ pub struct Scope {
 }
 
 impl Scope {
-    pub fn find_signal_by_name(&self, ast: &Ast, full_name: &str) -> Option<SignalIdx> {
+    pub fn find_signal(&self, ast: &Ast, full_name: &str) -> Option<SignalIdx> {
         for idx in &self.signals {
             if ast.get_signal(*idx).full_name == full_name {
                 return Some(*idx);
             }
         }
 
-        match self.parent {
-            Some(parent) => ast.get_scope(parent).find_signal_by_name(ast, full_name),
-            None => None,
+        None
+    }
+
+    pub fn find_signal_recursively(&self, ast: &Ast, full_name: &str) -> Option<SignalIdx> {
+        match self.find_signal(ast, full_name) {
+            Some(idx) => Some(idx),
+            None => match self.parent {
+                Some(parent) => ast
+                    .get_scope(parent)
+                    .find_signal_recursively(ast, full_name),
+                None => None,
+            },
         }
     }
 }
@@ -109,21 +127,32 @@ pub enum StatementKind {
         rhs: ExprIdx,
         blocking: bool,
     },
-    Block {
-        statements: Vec<StatementIdx>,
+
+    SimpleAssignmentParts {
+        target: SignalIdx,
+        source: ExprIdx,
+
+        from: ExprIdx,
+        to: ExprIdx,
+
+        blocking: bool,
     },
-    ScopedBlock {
+
+    SimpleAssignment {
+        target: SignalIdx,
+        source: ExprIdx,
+
+        blocking: bool,
+    },
+
+    Block {
         statements: Vec<StatementIdx>,
         scope: ScopeIdx,
     },
     If {
         condition: ExprIdx,
         body: StatementIdx,
-    },
-    IfElse {
-        condition: ExprIdx,
-        body: StatementIdx,
-        else_: StatementIdx,
+        else_: Option<StatementIdx>,
     },
     While {
         condition: ExprIdx,
@@ -134,26 +163,9 @@ pub enum StatementKind {
         body: StatementIdx,
     },
 
-    Repeat {
-        condition: ExprIdx,
-        body: StatementIdx,
-    },
-
-    For {
-        condition: ExprIdx,
-        init: StatementIdx,
-        increment: StatementIdx,
-        body: StatementIdx,
-        scope: ScopeIdx,
-    },
-
     // TODO
     Case,
     Foreach,
-
-    Forever {
-        body: StatementIdx,
-    },
 
     Return {
         expr: ExprIdx,
@@ -286,7 +298,7 @@ pub enum ExprKind {
     },
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub enum SignalLifetime {
     Static,
     Automatic,
