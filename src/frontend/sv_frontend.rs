@@ -1,6 +1,4 @@
 use core::fmt;
-use std::collections::HashMap;
-
 use log::warn;
 use num_bigint::BigUint;
 use num_traits::Num;
@@ -17,7 +15,10 @@ use surelog_sys::bindings as sl;
 use super::frontend_errors::FrontendError;
 
 // Entry point for the frontend
-pub fn compile_systemverilog(files: &[String], top_module: Option<&str>) -> Result<Ast, Vec<FrontendError>> {
+pub fn compile_systemverilog(
+    files: &[String],
+    top_module: Option<&str>,
+) -> Result<Ast, Vec<FrontendError>> {
     // FIXME: This is a bit ugly, maybe reconsider
     let refs = files.iter().map(|x| x.as_str()).collect::<Vec<_>>();
 
@@ -36,6 +37,7 @@ struct SvFrontend {
     ast: Ast,
     errors: Vec<FrontendError>,
     current_scope: Option<ScopeIdx>,
+    temp_counter: usize,
 }
 
 // Utilities
@@ -115,6 +117,7 @@ impl SvFrontend {
             ast: Ast::new(),
             errors: vec![],
             current_scope: None,
+            temp_counter: 0,
         }
     }
 
@@ -130,7 +133,7 @@ impl SvFrontend {
             is_top: true,
         });
 
-        self.current_scope = Some(scope_idx);
+        self.push_scope(scope_idx);
 
         let mut ast_module = Module {
             token,
@@ -255,10 +258,12 @@ impl SvFrontend {
             }
         };
 
-
         let low_conn = port.vpi_handle(sl::vpiLowConn).expect("No low conn found");
         let Some(high_conn) = port.vpi_handle(sl::vpiHighConn) else {
-            warn!("line {}: No high conn fonud for port {}", token.line, token.name);
+            warn!(
+                "line {}: No high conn fonud for port {}",
+                token.line, token.name
+            );
             return None;
         };
 
@@ -273,7 +278,11 @@ impl SvFrontend {
 
         let assignment = self.ast.add_statement(Statement {
             token: token.clone(),
-            kind: StatementKind::Assignment { lhs, rhs, blocking: false  },
+            kind: StatementKind::Assignment {
+                lhs,
+                rhs,
+                blocking: false,
+            },
         });
 
         Some(self.ast.add_process(Process {
@@ -299,7 +308,9 @@ impl SvFrontend {
             full_name,
             typ: type_idx,
             lifetime: SignalLifetime::Net,
-            scope: self.current_scope.expect("Initalizating signal out of scoe"),
+            scope: self
+                .current_scope
+                .expect("Initalizating signal out of scoe"),
         })
     }
 
@@ -420,36 +431,25 @@ impl SvFrontend {
                     .map(|var| self.translate_variable(var))
                     .collect::<Vec<_>>();
 
-                // Add the scope only if strictly needed
-                if !scope_signals.is_empty() {
-                    let ast_scope = self.ast.add_scope(Scope {
-                        token: token.clone(),
-                        parent: self.current_scope,
-                        signals: scope_signals,
-                        is_top: false,
-                    });
+                let ast_scope = self.ast.add_scope(Scope {
+                    token: token.clone(),
+                    parent: self.current_scope,
+                    signals: scope_signals,
+                    is_top: false,
+                });
 
-                    // Push scope
-                    self.current_scope = Some(ast_scope);
+                self.push_scope(ast_scope);
 
-                    let statements = statement
-                        .vpi_iter(sl::vpiStmt)
-                        .map(|s| self.translate_statement(s))
-                        .collect::<Vec<_>>();
+                let statements = statement
+                    .vpi_iter(sl::vpiStmt)
+                    .map(|s| self.translate_statement(s))
+                    .collect::<Vec<_>>();
 
-                    // Pop scope
-                    self.current_scope = self.ast.get_scope(self.current_scope.unwrap()).parent;
-                    StatementKind::ScopedBlock {
-                        statements,
-                        scope: ast_scope,
-                    }
-                } else {
-                    let statements = statement
-                        .vpi_iter(sl::vpiStmt)
-                        .map(|s| self.translate_statement(s))
-                        .collect::<Vec<_>>();
+                self.pop_scope();
 
-                    StatementKind::Block { statements }
+                StatementKind::Block {
+                    statements,
+                    scope: ast_scope,
                 }
             }
 
@@ -458,6 +458,7 @@ impl SvFrontend {
                     .vpi_iter(sl::vpiVariables)
                     .map(|var| self.translate_variable(var))
                     .collect();
+
                 let ast_scope = self.ast.add_scope(Scope {
                     token: token.clone(),
                     parent: self.current_scope,
@@ -465,39 +466,49 @@ impl SvFrontend {
                     is_top: false,
                 });
 
-                // Push scope
-                self.current_scope = Some(ast_scope);
+                self.push_scope(ast_scope);
 
-                let inits = statement
+                // For statements will get translated into:
+                // {
+                //   (initializers)
+                //   while (condition) {
+                //     (body)
+                //     (incrementer)
+                //   }
+                // }
+
+                let mut outer_statements = statement
                     .vpi_iter(sl::vpiForInitStmt)
                     .map(|s| self.translate_statement(s))
                     .collect::<Vec<_>>();
-                let init_stmt = if inits.len() == 1 {
-                    inits[0]
-                } else {
-                    self.ast.add_statement(Statement {
-                        token: token.clone(),
-                        kind: StatementKind::Block { statements: inits },
-                    })
-                };
+
+                // let init_stmt = if inits.len() == 1 {
+                //     inits[0]
+                // } else {
+                //     self.ast.add_statement(Statement {
+                //         token: token.clone(),
+                //         kind: StatementKind::Block { statements: inits },
+                //     })
+                // };
 
                 let condition = match statement.vpi_handle(sl::vpiCondition) {
                     Some(cond) => self.translate_expr(cond),
-                    None => todo!("return a constant expr that is always true"),
+                    None => self.make_constant_true(),
                 };
 
-                let incrs = statement
+                let mut incrs = statement
                     .vpi_iter(sl::vpiForIncStmt)
                     .map(|s| self.translate_statement(s))
                     .collect::<Vec<_>>();
-                let incr_stmt = if incrs.len() == 1 {
-                    incrs[0]
-                } else {
-                    self.ast.add_statement(Statement {
-                        token: token.clone(),
-                        kind: StatementKind::Block { statements: incrs },
-                    })
-                };
+
+                // let incr_stmt = if incrs.len() == 1 {
+                //     incrs[0]
+                // } else {
+                //     self.ast.add_statement(Statement {
+                //         token: token.clone(),
+                //         kind: StatementKind::Block { statements: incrs },
+                //     })
+                // };
 
                 let body = self.translate_statement(
                     statement
@@ -505,16 +516,64 @@ impl SvFrontend {
                         .expect("No for body found"),
                 );
 
-                // Pop scope
-                self.current_scope = self.ast.get_scope(self.current_scope.unwrap()).parent;
+                let ast_body = self.ast.get_statement_mut(body);
 
-                StatementKind::For {
-                    condition,
-                    init: init_stmt,
-                    increment: incr_stmt,
-                    body,
+                let mut was_block = false;
+                match &mut ast_body.kind {
+                    StatementKind::Block {
+                        statements,
+                        scope: _,
+                    } => {
+                        statements.append(&mut incrs);
+                        was_block = true;
+                    }
+                    _ => {}
+                }
+
+                // If the inside body was not a block, we need to create one ourselves to
+                // add the increment statements at the end
+                let body = if was_block {
+                    body
+                } else {
+                    incrs.insert(0, body);
+                    let scope = self.ast.add_scope(Scope {
+                        is_top: false,
+                        token: token.clone(),
+                        parent: self.current_scope,
+                        signals: vec![],
+                    });
+
+                    self.ast.add_statement(Statement {
+                        token: token.clone(),
+                        kind: StatementKind::Block {
+                            statements: incrs,
+                            scope,
+                        },
+                    })
+                };
+
+                self.pop_scope();
+
+                let while_ = self.ast.add_statement(Statement {
+                    token: token.clone(),
+                    kind: StatementKind::While { condition, body },
+                });
+
+                outer_statements.push(while_);
+
+                // let outer_block = self.ast.add_statement(statement)?;
+
+                StatementKind::Block {
+                    statements: outer_statements,
                     scope: ast_scope,
                 }
+                // StatementKind::For {
+                //     condition,
+                //     init: init_stmt,
+                //     increment: incr_stmt,
+                //     body,
+                //     scope: ast_scope,
+                // }
             }
 
             sl::vpiIf => {
@@ -527,7 +586,11 @@ impl SvFrontend {
                     statement.vpi_handle(sl::vpiStmt).expect("No if body found"),
                 );
 
-                StatementKind::If { condition, body }
+                StatementKind::If {
+                    condition,
+                    body,
+                    else_: None,
+                }
             }
             sl::vpiIfElse => {
                 let condition = self.translate_expr(
@@ -546,10 +609,10 @@ impl SvFrontend {
                         .expect("No if_else else found"),
                 );
 
-                StatementKind::IfElse {
+                StatementKind::If {
                     condition,
                     body,
-                    else_,
+                    else_: Some(else_),
                 }
             }
             sl::vpiWhile => {
@@ -592,7 +655,93 @@ impl SvFrontend {
                         .expect("No repeat body found"),
                 );
 
-                StatementKind::Repeat { condition, body }
+                // This will get translated as:
+                // {
+                //   tmp_max = (condition)
+                //   tmp_idx = 0
+                //   while (tmp_idx < tmp_max) {
+                //     body
+                //     tmp_idx += 1
+                //   }
+                // }
+
+                // We'll put these temporaries in the top scope, hopefully this is not a
+                // problme.
+                let int_typ = self.make_int_typ();
+                let idx = self.make_temp_signal(int_typ);
+                let max_count = self.make_temp_signal(int_typ);
+
+                let idx_ref = self.ast.add_expr(Expr {
+                    token: token.clone(),
+                    kind: ExprKind::SignalRef { signal: idx },
+                });
+                let max_ref = self.ast.add_expr(Expr {
+                    token: token.clone(),
+                    kind: ExprKind::SignalRef { signal: max_count },
+                });
+                let zero = self.make_constant_zero();
+                let one = self.make_constant_true();
+
+                let setup_max = self.ast.add_statement(Statement {
+                    token: token.clone(),
+                    kind: StatementKind::Assignment {
+                        lhs: max_ref,
+                        rhs: condition,
+                        blocking: true,
+                    },
+                });
+                let setup_idx = self.ast.add_statement(Statement {
+                    token: token.clone(),
+                    kind: StatementKind::Assignment {
+                        lhs: idx_ref,
+                        rhs: zero,
+                        blocking: true,
+                    },
+                });
+
+                let stop_condition = self.ast.add_expr(Expr {
+                    token: token.clone(),
+                    kind: ExprKind::Binary {
+                        op: BinaryOperator::LessThan,
+                        lhs: idx_ref,
+                        rhs: max_ref,
+                    },
+                });
+
+                let incr_expr = self.ast.add_expr(Expr {
+                    token: token.clone(),
+                    kind: ExprKind::Binary {
+                        op: BinaryOperator::Addition,
+                        lhs: idx_ref,
+                        rhs: one,
+                    },
+                });
+
+                let incr_statement = self.ast.add_statement(Statement {
+                    token: token.clone(),
+                    kind: StatementKind::Assignment {
+                        lhs: idx_ref,
+                        rhs: incr_expr,
+                        blocking: true,
+                    },
+                });
+
+                let body = self.add_to_block_end(body, incr_statement);
+
+                let while_loop = self.ast.add_statement(Statement {
+                    token: token.clone(),
+                    kind: StatementKind::While {
+                        condition: stop_condition,
+                        body,
+                    },
+                });
+
+                let statements = vec![setup_max, setup_idx, while_loop];
+
+                StatementKind::Block {
+                    statements,
+                    scope: self.current_scope.expect("No scope found"),
+                }
             }
             sl::vpiAssignment => {
                 let blocking = statement.vpi_get_bool(sl::vpiBlocking);
@@ -606,7 +755,7 @@ impl SvFrontend {
                 // FIXME: Standard 11.4.1, any left-hand index operation is only supposed to
                 //        be evaluated once, but we don't really have a way to enforce this yet.
                 //        Look into this eventually.
-                // NOTE : Sometimes the normal assignment returns zero as the operation type. 
+                // NOTE : Sometimes the normal assignment returns zero as the operation type.
                 //        This is not what the standard says but oh well.
                 let actual_rhs = if op == sl::vpiAssignmentOp || op == 0 {
                     rhs
@@ -652,7 +801,10 @@ impl SvFrontend {
                         .expect("No forever body found"),
                 );
 
-                StatementKind::Forever { body }
+                StatementKind::While {
+                    condition: self.make_constant_true(),
+                    body,
+                }
             }
 
             sl::vpiReturnStmt => {
@@ -950,7 +1102,7 @@ impl SvFrontend {
                 let scope = self
                     .ast
                     .get_scope(self.current_scope.expect("Variable outside scope"));
-                let var = scope.find_signal_by_name(&self.ast, &full_name);
+                let var = scope.find_signal_recursively(&self.ast, &full_name);
 
                 let var_idx = match var {
                     Some(var_idx) => var_idx,
@@ -1166,7 +1318,7 @@ impl SvFrontend {
                 .expect("Getting a signal outside a scope"),
         );
 
-        scope.find_signal_by_name(&self.ast, &full_name)
+        scope.find_signal_recursively(&self.ast, &full_name)
     }
 
     fn add_signal_to_current_scope(&mut self, signal_idx: SignalIdx) {
@@ -1174,6 +1326,121 @@ impl SvFrontend {
         self.ast.get_scope_mut(scope_idx).signals.push(signal_idx);
     }
 
+    fn push_scope(&mut self, scope: ScopeIdx) {
+        self.current_scope = Some(scope);
+    }
+
+    fn pop_scope(&mut self) {
+        let scope = self.ast.get_scope(
+            self.current_scope
+                .expect("Popping scope when no scope is defined"),
+        );
+
+        self.current_scope = Some(
+            scope
+                .parent
+                .expect("Popping scope when scope has no parent scope"),
+        );
+    }
+
+    fn add_to_block_end(
+        &mut self,
+        maybe_block: StatementIdx,
+        statement_to_add: StatementIdx,
+    ) -> StatementIdx {
+        let statement = self.ast.get_statement_mut(maybe_block);
+
+        match &mut statement.kind {
+            StatementKind::Block {
+                statements,
+                scope: _,
+            } => {
+                statements.push(statement_to_add);
+                return maybe_block;
+            }
+            _ => {}
+        };
+
+        let token = statement.token.clone();
+        // Create new block
+        let statements = vec![maybe_block, statement_to_add];
+
+        self.ast.add_statement(Statement {
+            token,
+            kind: StatementKind::Block {
+                statements,
+                scope: self.current_scope.expect("No scope found"),
+            },
+        })
+    }
+
+    fn make_temp_signal(&mut self, typ: TypeIdx) -> SignalIdx {
+        let scope = self.current_scope.expect("Creating signal outside scope");
+        let name = format!("__tmp_frontend_{}", self.temp_counter);
+        self.temp_counter += 1;
+
+        let signal = self.ast.add_signal(Signal {
+            token: Token {
+                line: 0,
+                name: name.clone(),
+            },
+            typ,
+            lifetime: SignalLifetime::Automatic,
+            full_name: name,
+            scope,
+        });
+
+        self.ast.get_scope_mut(scope).signals.push(signal);
+
+        signal
+    }
+
+    // TODO: We should probably make this fixed and not recreate it every time.
+    fn make_int_typ(&mut self) -> TypeIdx {
+        let token = Token {
+            line: 0,
+            name: "int".to_string(),
+        };
+
+        self.ast.add_typ(Type {
+            token,
+            kind: TypeKind::Int,
+            is_signed: false,
+        })
+    }
+
+    // TODO: We should probably make this fixed and not recreate it every time.
+    fn make_constant_true(&mut self) -> ExprIdx {
+        let token = Token {
+            line: 0,
+            name: "1".to_string(),
+        };
+        let constant = self.ast.add_constant(Constant {
+            token: token.clone(),
+            size: 32,
+            kind: ConstantKind::Integer(1),
+        });
+        self.ast.add_expr(Expr {
+            token,
+            kind: ExprKind::Constant { constant },
+        })
+    }
+
+    fn make_constant_zero(&mut self) -> ExprIdx {
+        let token = Token {
+            line: 0,
+            name: "0".to_string(),
+        };
+        let constant = self.ast.add_constant(Constant {
+            token: token.clone(),
+            size: 32,
+            kind: ConstantKind::Integer(0),
+        });
+        self.ast.add_expr(Expr {
+            token,
+            kind: ExprKind::Constant { constant },
+        })
+    }
     fn err_unsupported(&mut self, token: &Token, what: fmt::Arguments<'_>) {
         self.errors.push(FrontendError::unsupported(
             token.clone(),
@@ -1182,10 +1449,8 @@ impl SvFrontend {
     }
 
     fn err_other(&mut self, token: &Token, what: fmt::Arguments<'_>) {
-        self.errors.push(FrontendError::other(
-            token.clone(),
-            format!("{what}"),
-        ))
+        self.errors
+            .push(FrontendError::other(token.clone(), format!("{what}")))
     }
 
     fn err_signal_not_found(&mut self, ref_obj: VpiHandle) {

@@ -54,12 +54,7 @@ fn collect_signals_statement(
         } => {
             collect_signals_expr(ast, signals, top_scope_signals, *rhs);
         }
-        StatementKind::Block { statements } => {
-            for statement in statements {
-                collect_signals_statement(ast, signals, top_scope_signals, *statement);
-            }
-        }
-        StatementKind::ScopedBlock {
+        StatementKind::Block {
             statements,
             scope: _,
         } => {
@@ -67,19 +62,16 @@ fn collect_signals_statement(
                 collect_signals_statement(ast, signals, top_scope_signals, *statement);
             }
         }
-        StatementKind::If { condition, body } => {
-            collect_signals_expr(ast, signals, top_scope_signals, *condition);
-            collect_signals_statement(ast, signals, top_scope_signals, *body);
-        }
-
-        StatementKind::IfElse {
+        StatementKind::If {
             condition,
             body,
             else_,
         } => {
             collect_signals_expr(ast, signals, top_scope_signals, *condition);
             collect_signals_statement(ast, signals, top_scope_signals, *body);
-            collect_signals_statement(ast, signals, top_scope_signals, *else_);
+            if let Some(else_) = else_ {
+                collect_signals_statement(ast, signals, top_scope_signals, *else_);
+            }
         }
 
         StatementKind::While { condition, body } => {
@@ -92,27 +84,6 @@ fn collect_signals_statement(
             collect_signals_statement(ast, signals, top_scope_signals, *body);
         }
 
-        StatementKind::Repeat { condition, body } => {
-            collect_signals_expr(ast, signals, top_scope_signals, *condition);
-            collect_signals_statement(ast, signals, top_scope_signals, *body);
-        }
-
-        StatementKind::For {
-            condition,
-            init,
-            increment,
-            body,
-            scope: _,
-        } => {
-            collect_signals_expr(ast, signals, top_scope_signals, *condition);
-            collect_signals_statement(ast, signals, top_scope_signals, *body);
-            collect_signals_statement(ast, signals, top_scope_signals, *init);
-            collect_signals_statement(ast, signals, top_scope_signals, *increment);
-        }
-
-        StatementKind::Forever { body } => {
-            collect_signals_statement(ast, signals, top_scope_signals, *body)
-        }
         StatementKind::Return { expr } => {
             collect_signals_expr(ast, signals, top_scope_signals, *expr)
         }
@@ -123,6 +94,10 @@ fn collect_signals_statement(
 
         StatementKind::Case => todo!(),
         StatementKind::Foreach => todo!(),
+
+
+        StatementKind::SimpleAssignmentParts { .. } => todo!("SimpleAssignmentParts"),
+        StatementKind::SimpleAssignment { .. } => todo!("SimpleAssignment"),
     };
 }
 
