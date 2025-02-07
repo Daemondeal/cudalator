@@ -1,14 +1,26 @@
 #include <array>
 #include <cstdint>
 #include <string>
-#include <type_traits>
+
+/**
+3 main things to fix:
+1) When performing addition, multiplication and **, the result might be longer
+than the two operands so when applying the mask, the mask must take into
+consideration this additional lenght so the result vector must be longer. So
+maybe let's do something like temp (which has a lenght of max(a_lenght,
+b_lenght)+1) = a+b c = temp
+2) I also need to implement the reduction and, nand,
+or, nor, xor, xnor operators
+3) And also the logical and, nand, or, nor, xor,
+xnor
+4) I don't know about the genric template template <typename T, typename =
+std::enable_if_t<std::is_integral_v<T>>>, i'm working just with integers
+*/
 
 template <int N>
 class Bit
 {
     static_assert(N > 0 && N <= 128, "Bit width must be between 1 and 128");
-
-    // Sincero potrei tornare alla funzione align_size
     static constexpr int num_chunks = (N + 31) / 32;
     static constexpr std::array<uint32_t, num_chunks> compute_mask()
     {
@@ -35,14 +47,12 @@ class Bit
             chunks[i] &= mask[i];
     }
 
-    template <typename T>
-    void set_value(T value)
+    void set_value(uint32_t value_chunks[num_chunks])
     {
         chunks.fill(0);
-        for (int i = 0; i < num_chunks && value != 0; ++i)
+        for (int i = 0; i < num_chunks; ++i)
         {
-            chunks[i] = static_cast<uint32_t>(value & 0xFFFFFFFF);
-            value >>= 32;
+            chunks[i] = value_chunks[i];
         }
         apply_mask();
     }
@@ -50,25 +60,28 @@ class Bit
 public:
     // Constructors
     Bit() = default;
-    // Sto assumendo che T sia un tipo intero, confrontati con Pietro
-    template <typename T, typename = std::enable_if_t<std::is_integral_v<T>>>
-    Bit(T value)
-    {
-        set_value(value);
-    }
 
-    // Assignment operators
-    // Anche qua parlane, non è detto sia il modo più efficiente
-    template <typename T>
-    Bit& operator=(T value)
+    static constexpr int max(uint32_t a, uint32_t b) { return (a > b) ? a : b; }
+
+    Bit(uint32_t value) { set_value(value); }
+
+    // TODO: verify the case of truncation when assigning a larger vector to a
+    // smaller one
+    Bit& operator=(uint32_t value[num_chunks])
     {
         set_value(value);
         return *this;
     }
 
     // Arithmetic operators
+    // TODO: il problema qual è, che quando faccio l'addizione, se faccio 8 bit
+    // + 8 bit il risultato sarà a 9 e la maschera mi va a troncare il nono bit
+    // perché sarà su 8
     Bit operator+(const Bit& rhs) const
     {
+        // The point is that result is a Bit<N> but the sum of two Bit can
+        // produce one extra bit and the mask will truncate it, so result must
+        // be one bit longer
         Bit result;
         uint64_t carry = 0;
         for (int i = 0; i < num_chunks; ++i)
@@ -257,6 +270,9 @@ public:
         result.apply_mask();
         return result;
     }
+
+    // TODO: ti mancano i reduction operators che ti collassano il vettore ad
+    // uno scalare
 
     // Shift operators
     // TODO: da controllare, prob sto scrivendo spaghetti code
