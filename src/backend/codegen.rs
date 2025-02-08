@@ -343,15 +343,15 @@ impl<'a> Codegen<'a> {
 
     fn codegen_state_header<W: Write>(&self, header: &mut CppEmitter<'a, W>) -> Result<()> {
         let top_module = self.ast.get_module(self.top_module_idx);
-        let top_scope = self.ast.get_scope(top_module.scope);
+        // let top_scope = self.ast.get_scope(top_module.scope);
 
         header.line_start()?;
         emit!(header, "struct state_{}", self.top_name)?;
         header.line_end()?;
 
         header.block_start()?;
-        for signal in &top_scope.signals {
-            self.codegen_signal_declaration(header, *signal)?;
+        for signal in gather_all_static_signals(self.ast) {
+            self.codegen_signal_declaration(header, signal)?;
         }
         header.block_end_semicolon()?;
 
@@ -393,8 +393,14 @@ impl<'a> Codegen<'a> {
         match &stmt.kind {
             StatementKind::Block {
                 statements,
-                scope: _,
+                scope: scope_idx,
             } => {
+                let scope = self.ast.get_scope(*scope_idx);
+                for signal in &scope.signals {
+                    if self.ast.get_signal(*signal).lifetime == SignalLifetime::Automatic {
+                        self.codegen_signal_declaration(file, *signal)?;
+                    }
+                }
                 for statement in statements {
                     self.codegen_statement(file, *statement)?;
                 }
@@ -789,4 +795,22 @@ pub fn codegen_into_files<W: Write>(
     codegen.codegen(&mut source_emitter, &mut header_emitter)?;
 
     Ok(())
+}
+
+
+fn gather_all_static_signals(ast: &Ast) -> Vec<SignalIdx> {
+    // NOTE: Doing it this way also includes signals that may not be used anywhere. Probably sub
+    //       this with an actual dfs on the ast tree.
+    let mut result = vec![];
+
+    for (i, signal) in ast.signals.iter().enumerate() {
+        match signal.lifetime {
+            SignalLifetime::Static | SignalLifetime::Net => {
+                result.push(SignalIdx::from_idx(i as u32));
+            }
+            SignalLifetime::Automatic => {}
+        }
+    }
+
+    result
 }

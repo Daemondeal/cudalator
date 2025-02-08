@@ -1,9 +1,6 @@
 use std::collections::HashSet;
 
-use crate::cir::{
-    Ast, ExprIdx, ExprKind, SensitivtyKind, SignalIdx, StatementIdx,
-    StatementKind,
-};
+use crate::cir::{Ast, ExprIdx, ExprKind, SensitivtyKind, SignalIdx, StatementIdx, StatementKind};
 
 pub fn run_pass_populate_sensitivity(ast: &mut Ast) {
     let top_idx = ast.top_module.expect("No top module found");
@@ -95,7 +92,6 @@ fn collect_signals_statement(
         StatementKind::Case => todo!(),
         StatementKind::Foreach => todo!(),
 
-
         StatementKind::SimpleAssignmentParts { .. } => todo!("SimpleAssignmentParts"),
         StatementKind::SimpleAssignment { .. } => todo!("SimpleAssignment"),
     };
@@ -126,28 +122,27 @@ fn collect_signals_expr(
             collect_signals_expr(ast, signals, top_scope_signals, *lhs);
             collect_signals_expr(ast, signals, top_scope_signals, *rhs);
 
-            if signal_is_in_list(ast, top_scope_signals, *target) {
+            if signal_is_in_list(top_scope_signals, *target) {
                 signals.insert(*target);
             }
         }
         ExprKind::BitSelect { expr, target } => {
             collect_signals_expr(ast, signals, top_scope_signals, *expr);
-            if signal_is_in_list(ast, top_scope_signals, *target) {
+            if signal_is_in_list(top_scope_signals, *target) {
                 signals.insert(*target);
             }
         }
         ExprKind::SignalRef { signal } => {
-            if signal_is_in_list(ast, top_scope_signals, *signal) {
+            if signal_is_in_list(top_scope_signals, *signal) {
                 signals.insert(*signal);
             }
         }
     };
 }
 
-fn signal_is_in_list(ast: &Ast, signals: &[SignalIdx], signal_idx: SignalIdx) -> bool {
-    let full_name = &ast.get_signal(signal_idx).full_name;
+fn signal_is_in_list(signals: &[SignalIdx], signal_idx: SignalIdx) -> bool {
     for signal in signals {
-        if &ast.get_signal(*signal).full_name == full_name {
+        if signal.get_idx() == signal_idx.get_idx() {
             return true;
         }
     }

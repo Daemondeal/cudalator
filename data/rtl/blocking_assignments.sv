@@ -1,9 +1,10 @@
-module blocking_assignments;
+module test;
 
 int a;
 int b;
 
 always begin
+    int c;
     a <= 2;
     a = a + 2;
     begin
