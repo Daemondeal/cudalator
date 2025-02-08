@@ -154,13 +154,11 @@ impl SvFrontend {
         is_top: bool,
     ) {
         for net in module.vpi_iter(sl::vpiNet) {
-            let net_idx = self.translate_net(net);
-            self.add_signal_to_current_scope(net_idx);
+            self.translate_net(net);
         }
 
         for var in module.vpi_iter(sl::vpiVariables) {
-            let var_idx = self.translate_variable(var);
-            self.add_signal_to_current_scope(var_idx);
+            self.translate_variable(var);
         }
 
         for port in module.vpi_iter(sl::vpiPort) {
@@ -261,7 +259,7 @@ impl SvFrontend {
         let low_conn = port.vpi_handle(sl::vpiLowConn).expect("No low conn found");
         let Some(high_conn) = port.vpi_handle(sl::vpiHighConn) else {
             warn!(
-                "line {}: No high conn fonud for port {}",
+                "Line {}: No high conn fonud for port {}",
                 token.line, token.name
             );
             return None;
@@ -302,8 +300,7 @@ impl SvFrontend {
         let type_spec = net.vpi_handle(sl::vpiTypespec).expect("No type spec found");
         let type_idx = self.translate_typespec(type_spec);
 
-        // TODO: Add the signal directly to the scope inside this function
-        self.ast.add_signal(Signal {
+        let signal_idx = self.ast.add_signal(Signal {
             token,
             full_name,
             typ: type_idx,
@@ -311,7 +308,10 @@ impl SvFrontend {
             scope: self
                 .current_scope
                 .expect("Initalizating signal out of scoe"),
-        })
+        });
+
+        self.add_signal_to_current_scope(signal_idx);
+        signal_idx
     }
 
     fn translate_variable(&mut self, var: VpiHandle) -> SignalIdx {
@@ -329,13 +329,16 @@ impl SvFrontend {
         let type_spec = var.vpi_handle(sl::vpiTypespec).expect("No type spec found");
         let type_idx = self.translate_typespec(type_spec);
 
-        self.ast.add_signal(Signal {
+        let signal_idx = self.ast.add_signal(Signal {
             token,
             full_name,
             typ: type_idx,
             lifetime,
             scope: self.current_scope.expect("Signal declared outside a scope"),
-        })
+        });
+
+        self.add_signal_to_current_scope(signal_idx);
+        signal_idx
     }
 
     fn translate_always(&mut self, always: VpiHandle) -> ProcessIdx {
@@ -419,26 +422,72 @@ impl SvFrontend {
         }
     }
 
+    /*
+    fn translate_assignment(&mut self, assignment: VpiHandle) -> StatementIdx {
+        assert!(assignment.vpi_type() == sl::vpiAssignment);
+        let token = token_from_vpi(assignment);
+
+        let rhs = self.translate_expr(assignment.vpi_handle(sl::vpiRhs).expect("No rhs found"));
+
+        let vpi_lhs = assignment.vpi_handle(sl::vpiLhs).expect("No lhs found");
+
+        let lhs_kind = match vpi_lhs.vpi_type() {
+            sl::vpiConcatOp => todo!("translate_assignment vpiConcatOp"),
+
+            sl::vpiPartSelect => todo!(),
+            sl::vpiBitSelect => todo!(),
+            sl::vpiRefObj | sl::vpiRefVar => {
+
+            }
+
+            sl::vpiLongIntVar
+            | sl::vpiShortIntVar
+            | sl::vpiIntVar
+            | sl::vpiShortRealVar
+            | sl::vpiByteVar
+            | sl::vpiClassVar
+            | sl::vpiStringVar
+            | sl::vpiEnumVar
+            | sl::vpiStructVar
+            | sl::vpiUnionVar
+            | sl::vpiBitVar
+            | sl::vpiReg
+            | sl::vpiRegArray
+            | sl::vpiClassObj
+            | sl::vpiChandleVar
+            | sl::vpiPackedArrayVar
+            | sl::vpiVirtualInterfaceVar => todo!(),
+
+            _ => {
+                self.err_other(
+                    &token,
+                    format_args!("Unsupported assignment {}", assignment.vpi_type()),
+                );
+            }
+        };
+
+        todo!()
+    }
+    */
+
     fn translate_statement(&mut self, statement: VpiHandle) -> StatementIdx {
         let token = token_from_vpi(statement);
         let stmt_type = statement.vpi_type();
 
         let kind = match stmt_type {
             sl::vpiBegin | sl::vpiNamedBegin => {
-                // Populate scope
-                let scope_signals = statement
-                    .vpi_iter(sl::vpiVariables)
-                    .map(|var| self.translate_variable(var))
-                    .collect::<Vec<_>>();
-
                 let ast_scope = self.ast.add_scope(Scope {
                     token: token.clone(),
                     parent: self.current_scope,
-                    signals: scope_signals,
+                    signals: vec![],
                     is_top: false,
                 });
 
                 self.push_scope(ast_scope);
+
+                for signal in statement.vpi_iter(sl::vpiVariables) {
+                    self.translate_variable(signal);
+                }
 
                 let statements = statement
                     .vpi_iter(sl::vpiStmt)
@@ -454,19 +503,18 @@ impl SvFrontend {
             }
 
             sl::vpiFor => {
-                let scope_signals = statement
-                    .vpi_iter(sl::vpiVariables)
-                    .map(|var| self.translate_variable(var))
-                    .collect();
-
                 let ast_scope = self.ast.add_scope(Scope {
                     token: token.clone(),
                     parent: self.current_scope,
-                    signals: scope_signals,
+                    signals: vec![],
                     is_top: false,
                 });
 
                 self.push_scope(ast_scope);
+
+                for signal in statement.vpi_iter(sl::vpiVariables) {
+                    self.translate_variable(signal);
+                }
 
                 // For statements will get translated into:
                 // {
@@ -1093,7 +1141,6 @@ impl SvFrontend {
             | sl::vpiChandleVar
             | sl::vpiPackedArrayVar
             | sl::vpiVirtualInterfaceVar => {
-                println!("Line {}: Signal declared through var", token.line);
                 let full_name = expr.vpi_str(sl::vpiFullName);
                 // TODO: I can't find where this is specified, but it seems like if a signal is
                 //       referred directly rather than through a reference, the expression where it

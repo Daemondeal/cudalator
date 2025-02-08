@@ -1,9 +1,9 @@
 use paste::paste;
 
-#[derive(Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct ScopeIdx(usize);
 
-#[derive(Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct SignalIdx(usize);
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
@@ -34,6 +34,13 @@ impl ProcessIdx {
 impl SignalIdx {
     pub fn get_idx(&self) -> u32 {
         self.0 as u32
+    }
+
+    // NOTE: This is somewhat dangerous, only use this if you are iterating over the signal array.
+    // TODO: Make an iterator for the signal array that generates the idx directly so we don't have
+    //       to expose this.
+    pub fn from_idx(x: u32) -> Self {
+        Self(x as usize)
     }
 }
 
@@ -105,6 +112,7 @@ impl Scope {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SensitivtyKind {
     OnChange,
     Posedge,

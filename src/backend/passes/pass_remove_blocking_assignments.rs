@@ -29,7 +29,7 @@ impl PassRemoveBlockingAssignments {
         let top_idx = ast.top_module.expect("No top module found");
 
         let top_module = ast.get_module(top_idx);
-        let top_scope = top_module.scope;
+        // let top_scope = top_module.scope;
 
         // FIXME: Rust's borrow checker at work. There is probably a better way to do this, but for
         //        now we'll just clone everything and hope it turns out okay.
@@ -59,17 +59,14 @@ impl PassRemoveBlockingAssignments {
             }
 
             if is_block {
-                let statements = match &ast.get_statement(process_stmt).kind {
-                    StatementKind::Block {
-                        statements,
-                        scope: _,
-                    } => statements.clone(),
+                let (statements, block_scope) = match &ast.get_statement(process_stmt).kind {
+                    StatementKind::Block { statements, scope } => (statements.clone(), *scope),
                     _ => unreachable!(),
                 };
 
                 self.is_in_top_level_block = true;
                 for statement in statements {
-                    self.process_statement(ast, statement, top_scope);
+                    self.process_statement(ast, statement, block_scope);
                 }
 
                 let mut assignments = vec![];
@@ -104,7 +101,7 @@ impl PassRemoveBlockingAssignments {
     }
 
     pub fn process_statement(&mut self, ast: &mut Ast, statement: StatementIdx, scope: ScopeIdx) {
-        let (should_patch, typ) = match &ast.get_statement(statement).kind {
+        let patch_to = match &ast.get_statement(statement).kind {
             StatementKind::SimpleAssignment {
                 target,
                 source: _,
@@ -116,17 +113,30 @@ impl PassRemoveBlockingAssignments {
                 from: _,
                 to: _,
                 blocking,
-            } => (
-                ast.get_signal(*target).lifetime == SignalLifetime::Static && *blocking,
-                Some(ast.get_signal(*target).typ),
-            ),
+            } => {
+                let target_idx = *target;
+                let target = ast.get_signal(target_idx);
 
-            _ => (false, None),
+                if target.lifetime != SignalLifetime::Static || (!*blocking) {
+                    None
+                } else {
+                    // Check if a renaming already exists
+
+                    let replacement = if let Some(renamed) = self.temporaries.get(&target_idx) {
+                        (target_idx, *renamed)
+                    } else {
+                        let new_signal = self.add_temp_signal(ast, target.typ, scope);
+                        (target_idx, new_signal)
+                    };
+
+                    Some(replacement)
+                }
+            }
+
+            _ => None,
         };
 
-        let statement = ast.get_statement_mut(statement);
-
-        match &mut statement.kind {
+        match &mut ast.get_statement_mut(statement).kind {
             StatementKind::Invalid => unreachable!(),
             StatementKind::Assignment {
                 lhs: _,
@@ -156,6 +166,13 @@ impl PassRemoveBlockingAssignments {
                         ));
                     }
                 }
+
+
+                match &mut ast.get_statement_mut(statement).kind {
+                    StatementKind::Block { statements, .. } => 
+                        statements.append(&mut additional_statements),
+                    _ => {}
+                }
             }
 
             StatementKind::SimpleAssignment {
@@ -164,25 +181,13 @@ impl PassRemoveBlockingAssignments {
                 blocking,
             } => {
                 let source = *source;
-                
+                *blocking = false;
 
-                let to_add = if should_patch {
-                    *blocking = false;
-                    if let Some(renamed) = self.temporaries.get(target) {
-                        *target = *renamed;
-                        None
-                    } else {
-                        Some((*target, self.add_temp_signal(ast, typ.unwrap(), scope)))
-                    }
-                } else {
-                    None
-                };
+                if let Some((_, patch_to)) = patch_to {
+                    *target = patch_to;
+                }
 
                 self.patch_expr(ast, source);
-
-                if let Some((original, modified)) = to_add {
-                    self.temporaries.insert(original, modified);
-                }
             }
 
             StatementKind::SimpleAssignmentParts {
@@ -190,30 +195,21 @@ impl PassRemoveBlockingAssignments {
                 source,
                 from,
                 to,
-                blocking: _,
+                blocking,
             } => {
                 let source = *source;
                 let from = *from;
                 let to = *to;
 
-                let to_add = if should_patch {
-                    if let Some(renamed) = self.temporaries.get(target) {
-                        *target = *renamed;
-                        None
-                    } else {
-                        Some((*target, self.add_temp_signal(ast, typ.unwrap(), scope)))
-                    }
-                } else {
-                    None
-                };
+                *blocking = false;
+
+                if let Some((_, patch_to)) = patch_to {
+                    *target = patch_to;
+                }
 
                 self.patch_expr(ast, source);
                 self.patch_expr(ast, from);
                 self.patch_expr(ast, to);
-
-                if let Some((original, modified)) = to_add {
-                    self.temporaries.insert(original, modified);
-                }
             }
 
             StatementKind::While { condition, body }
@@ -250,7 +246,14 @@ impl PassRemoveBlockingAssignments {
             StatementKind::Break => {}
             StatementKind::Continue => {}
             StatementKind::Null => {}
+        };
+
+        // Only adding the replacement at the end since we don't want the rhs of assignments to use
+        // the replacement declared only on the lhs
+        if let Some((patch_from, patch_to)) = patch_to {
+            self.temporaries.insert(patch_from, patch_to);
         }
+
     }
 
     fn patch_expr(&mut self, ast: &mut Ast, expr: ExprIdx) {
@@ -331,12 +334,16 @@ impl PassRemoveBlockingAssignments {
             name: name.clone(),
         };
 
-        ast.add_signal(Signal {
+        let signal = ast.add_signal(Signal {
             token,
             typ,
             lifetime: SignalLifetime::Automatic,
             full_name: name,
             scope,
-        })
+        });
+
+        ast.get_scope_mut(scope).signals.push(signal);
+
+        signal
     }
 }

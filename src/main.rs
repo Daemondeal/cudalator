@@ -5,6 +5,7 @@ mod cir_printer;
 mod backend;
 mod frontend;
 
+use std::env;
 use std::fs::{self, File};
 use std::io::{self, BufWriter, Write};
 use std::path::{Path, PathBuf};
@@ -51,6 +52,10 @@ struct Args {
 
 fn main() -> Result<()> {
     color_eyre::install()?;
+
+    if env::var("RUST_LOG").is_err() {
+        env::set_var("RUST_LOG", "info")
+    }
     env_logger::builder().format_timestamp(None).init();
 
     let args = Args::parse();
