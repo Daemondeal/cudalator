@@ -34,3 +34,6 @@ simv
 *.txt
 runtime_test
 simv
+
+# clang-format
+.clang-format

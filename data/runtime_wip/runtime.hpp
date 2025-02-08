@@ -1,141 +1,166 @@
 #include <array>
 #include <cstdint>
+#include <initializer_list>
 #include <string>
 
-/**
-3 main things to fix:
-1) When performing addition, multiplication and **, the result might be longer
-than the two operands so when applying the mask, the mask must take into
-consideration this additional lenght so the result vector must be longer. So
-maybe let's do something like temp (which has a lenght of max(a_lenght,
-b_lenght)+1) = a+b c = temp
-2) I also need to implement the reduction and, nand,
-or, nor, xor, xnor operators
-3) And also the logical and, nand, or, nor, xor,
-xnor
-4) I don't know about the genric template template <typename T, typename =
-std::enable_if_t<std::is_integral_v<T>>>, i'm working just with integers
-*/
-
 template <int N>
-class Bit
-{
+class Bit {
     static_assert(N > 0 && N <= 128, "Bit width must be between 1 and 128");
+
     static constexpr int num_chunks = (N + 31) / 32;
-    static constexpr std::array<uint32_t, num_chunks> compute_mask()
-    {
+
+    static constexpr std::array<uint32_t, num_chunks> compute_mask() {
         std::array<uint32_t, num_chunks> mask{};
-        for (int i = 0; i < num_chunks; ++i)
-        {
-            if (i == num_chunks - 1 && N % 32 != 0)
-            {
+        for (int i = 0; i < num_chunks; ++i) {
+            if (i == num_chunks - 1 && N % 32 != 0) {
                 mask[i] = (1U << (N % 32)) - 1;
-            }
-            else
-            {
+            } else {
                 mask[i] = 0xFFFFFFFF;
             }
         }
         return mask;
     }
+
     static constexpr std::array<uint32_t, num_chunks> mask = compute_mask();
+
     std::array<uint32_t, num_chunks> chunks{};
 
-    void apply_mask()
-    {
+    void apply_mask() {
         for (int i = 0; i < num_chunks; ++i)
             chunks[i] &= mask[i];
     }
 
-    void set_value(uint32_t value_chunks[num_chunks])
-    {
+    void copy_from_init(std::initializer_list<uint32_t> init) {
         chunks.fill(0);
-        for (int i = 0; i < num_chunks; ++i)
-        {
-            chunks[i] = value_chunks[i];
+        int i = 0;
+        for (uint32_t val : init) {
+            if (i >= num_chunks)
+                break;
+            chunks[i++] = val;
         }
         apply_mask();
     }
 
 public:
-    // Constructors
     Bit() = default;
 
     static constexpr int max(uint32_t a, uint32_t b) { return (a > b) ? a : b; }
 
-    Bit(uint32_t value) { set_value(value); }
+    // Usual constructor by {}
+    Bit(std::initializer_list<uint32_t> init) {
+        copy_from_init(init);
+        return *this;
+    }
 
-    // TODO: verify the case of truncation when assigning a larger vector to a
-    // smaller one
-    Bit& operator=(uint32_t value[num_chunks])
-    {
-        set_value(value);
+    // Assignement like Bit<N> = Bit<M>. If M<N then the MSB's are zeroed,
+    // otherwire they are lost. I'm returning a reference because that's what
+    // usually happens, if you want to change it in theory there should be no
+    // problems
+    // https://stackoverflow.com/questions/15292892/what-is-the-return-type-of-the-built-in-assignment-operator
+    template <int M>
+    Bit& operator=(const Bit<M>& rhs) {
+        chunks.fill(0);
+
+        // Copy as many chunks as fit
+        constexpr int thisChunks = num_chunks;
+        constexpr int rhsChunks = (M + 31) / 32;
+        constexpr int copyCount =
+            (thisChunks < rhsChunks ? thisChunks : rhsChunks);
+
+        for (int i = 0; i < copyCount; ++i)
+            chunks[i] = rhs.chunks[i];
+
+        apply_mask();
+        return *this;
+    }
+
+    // Assignement for the usual {}
+    Bit& operator=(std::initializer_list<uint32_t> init) {
+        copy_from_init(init);
         return *this;
     }
 
     // Arithmetic operators
-    // TODO: il problema qual è, che quando faccio l'addizione, se faccio 8 bit
-    // + 8 bit il risultato sarà a 9 e la maschera mi va a troncare il nono bit
-    // perché sarà su 8
-    Bit operator+(const Bit& rhs) const
-    {
-        // The point is that result is a Bit<N> but the sum of two Bit can
-        // produce one extra bit and the mask will truncate it, so result must
-        // be one bit longer
-        Bit result;
+    template <int M>
+    Bit<max(N, M) + 1> operator+(const Bit<M>& rhs) const {
+        // We need to know the number of chunks
+        constexpr int lhs_chunks = num_chunks;
+        constexpr int rhs_chunks = (M + 31) / 32;
+        constexpr int res_chunks = ((max(N, M) + 1) + 31) / 32;
+
+        Bit<max(N, M) + 1> result;
         uint64_t carry = 0;
-        for (int i = 0; i < num_chunks; ++i)
-        {
-            uint64_t sum =
-                static_cast<uint64_t>(chunks[i]) + rhs.chunks[i] + carry;
+
+        // Now we can loop over the maximum number of chunks in the two
+        // operands.
+        for (int i = 0; i < res_chunks; ++i) {
+            uint64_t lhs_val = (i < lhs_chunks) ? chunks[i] : 0;
+            uint64_t rhs_val = (i < rhs_chunks) ? rhs.chunks[i] : 0;
+            uint64_t sum = lhs_val + rhs_val + carry;
             result.chunks[i] = static_cast<uint32_t>(sum);
             carry = sum >> 32;
         }
+
         result.apply_mask();
         return result;
     }
 
-    Bit operator-(const Bit& rhs) const
-    {
-        Bit result;
+    template <int M>
+    Bit<max(N, M)> operator-(const Bit<M>& rhs) const {
+        // I'm assuming Bit<max(N, M)> as the output lenght
+        Bit<max(N, M)> result;
+
+        // Just as before, we start by extracting the number of chunks
+        constexpr int lhs_chunks = num_chunks;            // N
+        constexpr int rhs_chunks = (M + 31) / 32;         // M
+        constexpr int res_chunks = (max(N, M) + 31) / 32; // res
+
         uint64_t borrow = 0;
-        for (int i = 0; i < num_chunks; ++i)
-        {
-            uint64_t diff =
-                static_cast<uint64_t>(chunks[i]) - rhs.chunks[i] - borrow;
+
+        // Chunk by chunk, up to res_chunks
+        for (int i = 0; i < res_chunks; ++i) {
+            uint64_t lhs_val = (i < lhs_chunks) ? chunks[i] : 0;
+            uint64_t rhs_val = (i < rhs_chunks) ? rhs.chunks[i] : 0;
+
+            uint64_t diff = lhs_val - rhs_val - borrow;
             result.chunks[i] = static_cast<uint32_t>(diff);
-            borrow = (diff >> 32) ? 1 : 0;
+
+            // Se l'MSB è 1 quando shifto 64 >> 32 allora diff ha borrow out
+            borrow = (diff >> 32) & 1;
         }
+
+        // Qua voglio forzare il risultato ad avere max(N,M) bits
         result.apply_mask();
         return result;
     }
 
-    // TODO: da debuggare, sono troppo stanco
-    Bit operator*(const Bit& rhs) const
-    {
-        Bit result;
-        for (int i = 0; i < num_chunks; ++i)
-        {
+    template <int M>
+    Bit<N + M> operator*(const Bit<M>& rhs) const {
+        Bit<N + M> result;
+        for (int i = 0; i < num_chunks; ++i) {
             uint64_t carry = 0;
-            for (int j = 0; j < num_chunks; ++j)
-            {
-                if (i + j >= num_chunks)
+            for (int j = 0; j < rhs.num_chunks; ++j) {
+                if (i + j >= result.num_chunks)
                     break;
                 uint64_t product =
                     static_cast<uint64_t>(chunks[i]) * rhs.chunks[j];
-                uint64_t temp =
-                    result.chunks[i + j] + (product & 0xFFFFFFFF) + carry;
+                uint64_t temp = static_cast<uint64_t>(result.chunks[i + j]) +
+                                (product & 0xFFFFFFFF) + carry;
                 result.chunks[i + j] = static_cast<uint32_t>(temp);
                 carry = (product >> 32) + (temp >> 32);
+            }
+            if (i + rhs.num_chunks < result.num_chunks) {
+                result.chunks[i + rhs.num_chunks] =
+                    static_cast<uint32_t>(carry);
             }
         }
         result.apply_mask();
         return result;
     }
 
-    Bit operator/(const Bit& divisor) const
-    {
-        // Tecnicamente dovrei tornare X ma non c'è
+    // TODO: la dimensione? La stiamo nascondendo sotto il tappeto?
+    Bit operator/(const Bit& divisor) const {
+        // Technically X but it's not implemented
         if (divisor == Bit(0))
             return Bit(0);
 
@@ -143,15 +168,12 @@ public:
         Bit quotient;
         Bit remainder;
 
-        // Sto usando loop con data-dependance, potrebbe causare divergence
-        // right?
-        for (int i = N - 1; i >= 0; --i)
-        {
+        // data-dependance, divergence?
+        for (int i = N - 1; i >= 0; --i) {
             remainder = remainder << 1;
             remainder.chunks[0] |= (dividend.chunks[i / 32] >> (i % 32)) & 1;
 
-            if (remainder >= divisor)
-            {
+            if (remainder >= divisor) {
                 remainder = remainder - divisor;
                 quotient.chunks[i / 32] |= 1 << (i % 32);
             }
@@ -160,19 +182,16 @@ public:
         return quotient;
     }
 
-    Bit operator%(const Bit& divisor) const
-    {
+    Bit operator%(const Bit& divisor) const {
         if (divisor == Bit(0))
             return Bit(0);
 
         Bit remainder;
 
-        for (int i = N - 1; i >= 0; --i)
-        {
+        for (int i = N - 1; i >= 0; --i) {
             remainder = remainder << 1;
             remainder.chunks[0] |= (chunks[i / 32] >> (i % 32)) & 1;
-            if (remainder >= divisor)
-            {
+            if (remainder >= divisor) {
                 remainder = remainder - divisor;
             }
         }
@@ -180,11 +199,9 @@ public:
         return remainder;
     }
 
-    Bit pow(const Bit& exponent) const
-    {
-        // 0^0 -> 1 se ho capito qualcosa
-        if (*this == Bit(0) && exponent == Bit(0))
-        {
+    //
+    Bit pow(const Bit& exponent) const {
+        if (*this == Bit(0) && exponent == Bit(0)) {
             return Bit(1);
         }
 
@@ -193,15 +210,12 @@ public:
         Bit exp = exponent;
 
         // Early exit se zero base
-        if (base == Bit(0))
-        {
+        if (base == Bit(0)) {
             return Bit(0);
         }
 
-        while (exp != Bit(0))
-        {
-            if ((exp.chunks[0] & 1) != 0)
-            {
+        while (exp != Bit(0)) {
+            if ((exp.chunks[0] & 1) != 0) {
                 result = result * base;
             }
             base = base * base;
@@ -214,11 +228,9 @@ public:
         return result;
     }
 
-    bool operator<(const Bit& rhs) const
-    {
+    bool operator<(const Bit& rhs) const {
         // Da MSB a LSB
-        for (int i = num_chunks - 1; i >= 0; --i)
-        {
+        for (int i = num_chunks - 1; i >= 0; --i) {
             if (chunks[i] < rhs.chunks[i])
                 return true;
             if (chunks[i] > rhs.chunks[i])
@@ -232,8 +244,7 @@ public:
     bool operator>=(const Bit& rhs) const { return !(*this < rhs); }
 
     // And
-    Bit operator&(const Bit& rhs) const
-    {
+    Bit operator&(const Bit& rhs) const {
         Bit result;
         for (int i = 0; i < num_chunks; ++i)
             result.chunks[i] = chunks[i] & rhs.chunks[i];
@@ -242,8 +253,7 @@ public:
     }
 
     // Or
-    Bit operator|(const Bit& rhs) const
-    {
+    Bit operator|(const Bit& rhs) const {
         Bit result;
         for (int i = 0; i < num_chunks; ++i)
             result.chunks[i] = chunks[i] | rhs.chunks[i];
@@ -252,8 +262,7 @@ public:
     }
 
     // Xor
-    Bit operator^(const Bit& rhs) const
-    {
+    Bit operator^(const Bit& rhs) const {
         Bit result;
         for (int i = 0; i < num_chunks; ++i)
             result.chunks[i] = chunks[i] ^ rhs.chunks[i];
@@ -262,8 +271,7 @@ public:
     }
 
     // Not
-    Bit operator~() const
-    {
+    Bit operator~() const {
         Bit result;
         for (int i = 0; i < num_chunks; ++i)
             result.chunks[i] = ~chunks[i];
@@ -276,8 +284,7 @@ public:
 
     // Shift operators
     // TODO: da controllare, prob sto scrivendo spaghetti code
-    Bit operator<<(int shift) const
-    {
+    Bit operator<<(int shift) const {
         Bit result;
         if (shift >= N)
             return result;
@@ -286,10 +293,8 @@ public:
         int bit_shift = shift % 32;
 
         // O(n) ma ho un'idea
-        for (int i = num_chunks - 1; i >= 0; --i)
-        {
-            if (i - chunk_shift >= 0)
-            {
+        for (int i = num_chunks - 1; i >= 0; --i) {
+            if (i - chunk_shift >= 0) {
                 result.chunks[i] = chunks[i - chunk_shift] << bit_shift;
                 if (bit_shift > 0 && i - chunk_shift - 1 >= 0)
                     result.chunks[i] |=
@@ -301,8 +306,7 @@ public:
     }
 
     // TODO: controlla
-    Bit operator>>(int shift) const
-    {
+    Bit operator>>(int shift) const {
         Bit result;
         if (shift >= N)
             return result;
@@ -310,10 +314,8 @@ public:
         int chunk_shift = shift / 32;
         int bit_shift = shift % 32;
 
-        for (int i = 0; i < num_chunks; ++i)
-        {
-            if (i + chunk_shift < num_chunks)
-            {
+        for (int i = 0; i < num_chunks; ++i) {
+            if (i + chunk_shift < num_chunks) {
                 result.chunks[i] = chunks[i + chunk_shift] >> bit_shift;
                 if (bit_shift > 0 && i + chunk_shift + 1 < num_chunks)
                     result.chunks[i] |= chunks[i + chunk_shift + 1]
@@ -325,8 +327,7 @@ public:
     }
 
     // Comparison operators
-    bool operator==(const Bit& rhs) const
-    {
+    bool operator==(const Bit& rhs) const {
         for (int i = 0; i < num_chunks; ++i)
             if (chunks[i] != rhs.chunks[i])
                 return false;
@@ -341,11 +342,9 @@ public:
         that implicitly convert a vector to a 32/64-bit integer (depending on
         the specific simulator)
     */
-    explicit operator uint64_t() const
-    {
+    explicit operator uint64_t() const {
         uint64_t value = 0;
-        for (int i = num_chunks - 1; i >= 0; --i)
-        {
+        for (int i = num_chunks - 1; i >= 0; --i) {
             if (i == 1)
                 value <<= 32;
             value |= chunks[i];
@@ -354,11 +353,9 @@ public:
     }
 
     // Just for debugging purposes
-    std::string to_string() const
-    {
+    std::string to_string() const {
         std::string str;
-        for (int i = num_chunks - 1; i >= 0; --i)
-        {
+        for (int i = num_chunks - 1; i >= 0; --i) {
             char buf[9];
             snprintf(buf, sizeof(buf), "%08X", chunks[i]);
             str += buf;
