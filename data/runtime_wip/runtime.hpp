@@ -52,13 +52,22 @@ public:
         return *this;
     }
 
+    // Assignement for the usual {}, used to modify the value of a bit vector
+    Bit& operator=(std::initializer_list<uint32_t> init) {
+        copy_from_init(init);
+        return *this;
+    }
+
     // Assignement like Bit<N> = Bit<M>. If M<N then the MSB's are zeroed,
-    // otherwire they are lost. I'm returning a reference because that's what
+    // otherwise they are lost. I'm returning a reference because that's what
     // usually happens, if you want to change it in theory there should be no
     // problems
     // https://stackoverflow.com/questions/15292892/what-is-the-return-type-of-the-built-in-assignment-operator
     template <int M>
     Bit& operator=(const Bit<M>& rhs) {
+        // TODO: verifica con Pietro non siano possibili cose strane coi range
+        // tipo Bit<100> a con tutti i bit settati e poi a = Bit<64>b dove i
+        // lower 64 saranno di b e i MSB rimangono a 1
         chunks.fill(0);
 
         // Copy as many chunks as fit
@@ -71,12 +80,6 @@ public:
             chunks[i] = rhs.chunks[i];
 
         apply_mask();
-        return *this;
-    }
-
-    // Assignement for the usual {}
-    Bit& operator=(std::initializer_list<uint32_t> init) {
-        copy_from_init(init);
         return *this;
     }
 
@@ -107,7 +110,8 @@ public:
 
     template <int M>
     Bit<max(N, M)> operator-(const Bit<M>& rhs) const {
-        // I'm assuming Bit<max(N, M)> as the output lenght
+        // I'm assuming Bit<max(N, M)> as the output lenght because
+        // in the worst case i'm doing like x-0 so the result is x
         Bit<max(N, M)> result;
 
         // Just as before, we start by extracting the number of chunks
@@ -158,7 +162,38 @@ public:
         return result;
     }
 
-    // TODO: la dimensione? La stiamo nascondendo sotto il tappeto?
+    // TODO: in realtà verifica questa cosa perché in ogni caso un vettore da
+    // più di 128 tu in ogni caso non dovresti averlo
+    template <int M>
+    Bit<N * M> pow(const Bit<M>& exponent) const {
+        if (*this == Bit(0) && exponent == Bit<M>(0)) {
+            return Bit<N * M>(1);
+        }
+
+        Bit<N * M> result(1);
+        Bit<N * M> base = *this;
+        Bit<M> exp = exponent;
+
+        // Early exit if base is zero
+        if (base == Bit<N * M>(0)) {
+            return Bit<N * M>(0);
+        }
+
+        while (exp != Bit<M>(0)) {
+            if ((exp.chunks[0] & 1) != 0) {
+                result = result * base;
+            }
+            base = base * base;
+            exp = exp >> 1;
+
+            // Short-circuit if base becomes zero
+            if (base == Bit<N * M>(0))
+                break;
+        }
+        return result;
+    }
+
+    // TODO: questo non l'ho controllato, mi devasta il cervello
     Bit operator/(const Bit& divisor) const {
         // Technically X but it's not implemented
         if (divisor == Bit(0))
@@ -168,7 +203,6 @@ public:
         Bit quotient;
         Bit remainder;
 
-        // data-dependance, divergence?
         for (int i = N - 1; i >= 0; --i) {
             remainder = remainder << 1;
             remainder.chunks[0] |= (dividend.chunks[i / 32] >> (i % 32)) & 1;
@@ -199,41 +233,29 @@ public:
         return remainder;
     }
 
-    //
-    Bit pow(const Bit& exponent) const {
-        if (*this == Bit(0) && exponent == Bit(0)) {
-            return Bit(1);
-        }
-
-        Bit result(1);
-        Bit base = *this;
-        Bit exp = exponent;
-
-        // Early exit se zero base
-        if (base == Bit(0)) {
-            return Bit(0);
-        }
-
-        while (exp != Bit(0)) {
-            if ((exp.chunks[0] & 1) != 0) {
-                result = result * base;
-            }
-            base = base * base;
-            exp = exp >> 1;
-
-            // Short-circuit se base becomes zero
-            if (base == Bit(0))
-                break;
-        }
-        return result;
-    }
-
     bool operator<(const Bit& rhs) const {
         // Da MSB a LSB
         for (int i = num_chunks - 1; i >= 0; --i) {
             if (chunks[i] < rhs.chunks[i])
                 return true;
             if (chunks[i] > rhs.chunks[i])
+                return false;
+        }
+        return false; // Equal
+    }
+
+    template <int M>
+    bool operator<(const Bit<M>& rhs) const {
+        constexpr int lhs_chunks = num_chunks;
+        constexpr int rhs_chunks = (M + 31) / 32;
+
+        for (int i = std::max(lhs_chunks, rhs_chunks) - 1; i >= 0; --i) {
+            uint32_t lhs_chunk = (i < lhs_chunks) ? chunks[i] : 0;
+            uint32_t rhs_chunk = (i < rhs_chunks) ? rhs.chunks[i] : 0;
+
+            if (lhs_chunk < rhs_chunk)
+                return true;
+            if (lhs_chunk > rhs_chunk)
                 return false;
         }
         return false; // Equal

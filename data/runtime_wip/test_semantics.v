@@ -3,26 +3,24 @@
 
 module test_semantics;
 
-    parameter N = 64;
+    parameter a_bit = 64;
+    parameter b_bit = 64;
 
-    reg  [  N-1:0] a;
-    reg  [  N-1:0] b;
-
-
-    wire [2*N-1:0] result;
+    logic [a_bit-1:0] a;
+    logic [b_bit-1:0] b;
+    // worst case
+    wire [(a_bit+b_bit)-1:0] result;
 
     assign result = a * b;
 
     initial begin
-
-        a = 64'h123456789ABCDEF0;
-        b = 64'hFEDCBA9876543210;
-        // Potrei anche toglierlo
-        #10;
-
-        $display("a = %h", a);
-        $display("b = %h", b);
-        $display("result = %h", result);
+        a = 64'hFFFFFFFFFFFFFF;
+        b = 64'hFFFFFFFFFFFFFFFF;
+        $display("a*b=%h", a * b);
+        $display("a = %h | %d", a, a);
+        $display("b = %h | %d", b, b);
+        $display("result = %h | %d", result, result);
+        $display("result length = %0d bits", $clog2(result + 1));
 
         $finish;
     end
