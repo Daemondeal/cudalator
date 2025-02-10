@@ -88,6 +88,7 @@ pub struct Scope {
     pub is_top: bool,
 }
 
+
 impl Scope {
     pub fn find_signal(&self, ast: &Ast, full_name: &str) -> Option<SignalIdx> {
         for idx in &self.signals {
@@ -119,40 +120,35 @@ pub enum SensitivtyKind {
     Negedge,
 }
 
+pub struct Block {
+    pub scope: ScopeIdx,
+    pub statements: Vec<StatementIdx>,
+}
+
 pub struct Process {
     pub token: Token,
-    pub statement: StatementIdx,
+    // pub statement: StatementIdx,
+    pub scope: ScopeIdx,
+    pub statements: Vec<StatementIdx>,
 
     pub sensitivity_list: Vec<(SensitivtyKind, SignalIdx)>,
     pub should_populate_sensitivity_list: bool,
+}
+
+pub enum SelectKind {
+    None,
+    Bit(ExprIdx),
+    Parts { lhs: ExprIdx, rhs: ExprIdx },
 }
 
 pub enum StatementKind {
     Invalid,
 
     Assignment {
-        lhs: ExprIdx,
+        lhs: SignalIdx,
         rhs: ExprIdx,
-        blocking: bool,
+        select: SelectKind,
     },
-
-    SimpleAssignmentParts {
-        target: SignalIdx,
-        source: ExprIdx,
-
-        from: ExprIdx,
-        to: ExprIdx,
-
-        blocking: bool,
-    },
-
-    SimpleAssignment {
-        target: SignalIdx,
-        source: ExprIdx,
-
-        blocking: bool,
-    },
-
     Block {
         statements: Vec<StatementIdx>,
         scope: ScopeIdx,

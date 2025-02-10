@@ -58,7 +58,7 @@ void Circuit::eval() {
 
         // Run the processes
         for (auto & proc : ready_queue) {
-            proc.function_pointer(&m_previous_states[0], &m_states[0], 1);
+            proc.function_pointer(&m_states[0], 1);
         }
 
         ready_queue.clear();
