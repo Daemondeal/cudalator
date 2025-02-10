@@ -2,8 +2,8 @@ use std::io::Write;
 
 use crate::cir::{
     Ast, ConstantIdx, ConstantKind, ExprIdx, ExprKind, ModuleIdx, PortDirection, ProcessIdx,
-    ScopeIdx, SensitivtyKind, Signal, SignalIdx, SignalLifetime, StatementIdx, StatementKind,
-    TypeIdx, TypeKind,
+    ScopeIdx, SelectKind, SensitivtyKind, Signal, SignalIdx, SignalLifetime, StatementIdx,
+    StatementKind, TypeIdx, TypeKind,
 };
 
 type Res = Result<(), std::io::Error>;
@@ -77,7 +77,11 @@ fn sexpr_convert_process<'a>(ast: &'a Ast, process_idx: ProcessIdx) -> SExpr<'a>
         children.push(SExpr::expr("sensitivity", sensitivity));
     }
 
-    children.push(sexpr_convert_statement(ast, process.statement));
+    children.push(sexpr_convert_scope(ast, process.scope));
+
+    for statement in &process.statements {
+        children.push(sexpr_convert_statement(ast, *statement));
+    }
 
     SExpr::statement("process", children)
 }
@@ -87,14 +91,28 @@ fn sexpr_convert_statement<'a>(ast: &'a Ast, statement_idx: StatementIdx) -> SEx
 
     match &statement.kind {
         StatementKind::Invalid => SExpr::atom("invalid_stmt"),
-        StatementKind::Assignment { lhs, rhs, blocking } => SExpr::expr(
-            if *blocking {
-                "assign"
-            } else {
-                "assign_nonblock"
-            },
-            vec![sexpr_convert_expr(ast, *lhs), sexpr_convert_expr(ast, *rhs)],
-        ),
+        StatementKind::Assignment { lhs, rhs, select } => {
+            let signal = sexpr_convert_signal(ast, *lhs);
+
+            let target = match select {
+                SelectKind::None => signal,
+                SelectKind::Bit(expr_idx) => SExpr::expr(
+                    "select_bit",
+                    vec![sexpr_convert_expr(ast, *expr_idx), signal],
+                ),
+                SelectKind::Parts { lhs, rhs } => SExpr::expr(
+                    "select_part",
+                    vec![
+                        sexpr_convert_expr(ast, *lhs),
+                        sexpr_convert_expr(ast, *rhs),
+                        signal,
+                    ],
+                ),
+            };
+
+            SExpr::expr("assign", vec![target, sexpr_convert_expr(ast, *rhs)])
+        }
+
         StatementKind::Block { statements, scope } => SExpr::statement(
             "block",
             vec![
@@ -149,41 +167,6 @@ fn sexpr_convert_statement<'a>(ast: &'a Ast, statement_idx: StatementIdx) -> SEx
         StatementKind::Break => SExpr::atom("break"),
         StatementKind::Continue => SExpr::atom("continue"),
         StatementKind::Null => SExpr::atom("null"),
-
-        StatementKind::SimpleAssignmentParts {
-            target,
-            source,
-            from,
-            to,
-            blocking,
-        } => SExpr::expr(
-            if *blocking {
-                "assign_simple_parts_blocking"
-            } else {
-                "assign_simple_parts"
-            },
-            vec![
-                sexpr_convert_expr(ast, *from),
-                sexpr_convert_expr(ast, *to),
-                sexpr_convert_signal(ast, *target),
-                sexpr_convert_expr(ast, *source),
-            ],
-        ),
-        StatementKind::SimpleAssignment {
-            target,
-            source,
-            blocking,
-        } => SExpr::expr(
-            if *blocking {
-                "assign_simple_blocking"
-            } else {
-                "assign_simple"
-            },
-            vec![
-                sexpr_convert_signal(ast, *target),
-                sexpr_convert_expr(ast, *source),
-            ],
-        ),
     }
 }
 

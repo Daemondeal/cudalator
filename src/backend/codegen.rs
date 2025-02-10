@@ -4,9 +4,7 @@ use std::{collections::HashMap, io::Write};
 use color_eyre::Result;
 
 use crate::cir::{
-    Ast, BinaryOperator, ConstantIdx, ConstantKind, ExprIdx, ExprKind, ModuleIdx, ProcessIdx,
-    ScopeIdx, SignalIdx, SignalLifetime, StatementIdx, StatementKind, TypeIdx, TypeKind,
-    UnaryOperator,
+    Ast, BinaryOperator, ConstantIdx, ConstantKind, ExprIdx, ExprKind, ModuleIdx, ProcessIdx, ScopeIdx, SelectKind, SignalIdx, SignalLifetime, StatementIdx, StatementKind, TypeIdx, TypeKind, UnaryOperator
 };
 
 pub enum CodegenTarget {
@@ -342,7 +340,7 @@ impl<'a> Codegen<'a> {
     }
 
     fn codegen_state_header<W: Write>(&self, header: &mut CppEmitter<'a, W>) -> Result<()> {
-        let top_module = self.ast.get_module(self.top_module_idx);
+        // let top_module = self.ast.get_module(self.top_module_idx);
         // let top_scope = self.ast.get_scope(top_module.scope);
 
         header.line_start()?;
@@ -376,10 +374,9 @@ impl<'a> Codegen<'a> {
 
         emit!(
             file,
-            "void {} (state_{} *prev, state_{} *next, size_t len)",
+            "void {} (state_{} *state, size_t len)",
             process_name(process),
             self.top_name,
-            self.top_name
         )?;
 
         file.line_end()?;
@@ -388,27 +385,14 @@ impl<'a> Codegen<'a> {
 
         self.codegen_tid(file)?;
 
-        let stmt = self.ast.get_statement(ast_process.statement);
-
-        match &stmt.kind {
-            StatementKind::Block {
-                statements,
-                scope: scope_idx,
-            } => {
-                let scope = self.ast.get_scope(*scope_idx);
-                for signal in &scope.signals {
-                    if self.ast.get_signal(*signal).lifetime == SignalLifetime::Automatic {
-                        self.codegen_signal_declaration(file, *signal)?;
-                    }
-                }
-                for statement in statements {
-                    self.codegen_statement(file, *statement)?;
-                }
+        let scope = self.ast.get_scope(ast_process.scope);
+        for signal in &scope.signals {
+            if self.ast.get_signal(*signal).lifetime == SignalLifetime::Automatic {
+                self.codegen_signal_declaration(file, *signal)?;
             }
-
-            _ => {
-                self.codegen_statement(file, ast_process.statement)?;
-            }
+        }
+        for statement in &ast_process.statements {
+            self.codegen_statement(file, *statement)?;
         }
 
         file.block_end()?;
@@ -436,60 +420,42 @@ impl<'a> Codegen<'a> {
         let statement = self.ast.get_statement(statement);
 
         match &statement.kind {
-            StatementKind::SimpleAssignment {
-                target,
-                source,
-                blocking: _,
-            } => {
-                file.line_start()?;
-                self.codegen_signal_ref(file, *target, false)?;
-                emit!(file, " = ")?;
-                self.codegen_expr(file, *source, true)?;
-                file.line_end_semicolon()?;
-            }
-            StatementKind::SimpleAssignmentParts {
-                target,
-                source,
-                from,
-                to,
-                blocking: _,
-            } => {
-                file.line_start()?;
-                self.codegen_signal_ref(file, *target, false)?;
-                emit!(file, ".set_parts(")?;
-                self.codegen_expr(file, *from, false)?;
-                emit!(file, ", ")?;
-                self.codegen_expr(file, *to, false)?;
-                emit!(file, ", ")?;
-                self.codegen_expr(file, *source, true)?;
-                file.line_end_semicolon()?;
-            }
             StatementKind::Assignment {
-                lhs: _,
-                rhs: _,
-                blocking: _,
+                lhs,
+                rhs,
+                select,
             } => {
-                unreachable!();
 
-                // assert!(
-                //     *blocking == false,
-                //     "found a blocking assignment during codegen, this is a bug."
-                // );
-                //
-                // file.line_start()?;
-                // self.codegen_expr(file, *lhs, false)?;
-                // emit!(file, " = ")?;
-                // self.codegen_expr(file, *rhs, true)?;
-                // file.line_end_semicolon()?;
-                //
-                // if !blocking {
-                //     file.line_start()?;
-                //     self.codegen_expr(file, *lhs, true)?;
-                //     emit!(file, " = ")?;
-                //     self.codegen_expr(file, *lhs, false)?;
-                //     file.line_end_semicolon()?;
-                // }
+                file.line_start()?;
+
+                self.codegen_signal_ref(file, *lhs)?;
+
+                match select {
+                    SelectKind::None => {
+                        emit!(file, " = ")?;
+                        self.codegen_expr(file, *rhs)?;
+                    }
+                    SelectKind::Bit(expr_idx) => {
+                        emit!(file, ".set_bit(")?;
+                        self.codegen_expr(file, *expr_idx)?;
+                        emit!(file, ", ")?;
+                        self.codegen_expr(file, *rhs)?;
+                        emit!(file, ")")?;
+                    }
+                    SelectKind::Parts { lhs: part_lhs, rhs: part_rhs } => {
+                        emit!(file, ".set_range(")?;
+                        self.codegen_expr(file, *part_lhs)?;
+                        emit!(file, ", ")?;
+                        self.codegen_expr(file, *part_rhs)?;
+                        emit!(file, ", ")?;
+                        self.codegen_expr(file, *rhs)?;
+                        emit!(file, ")")?;
+                    }
+                }
+
+                file.line_end_semicolon()?;
             }
+
             StatementKind::Block { statements, scope } => {
                 file.block_start()?;
 
@@ -508,7 +474,7 @@ impl<'a> Codegen<'a> {
             } => {
                 file.line_start()?;
                 emit!(file, "if (")?;
-                self.codegen_expr(file, *condition, true)?;
+                self.codegen_expr(file, *condition)?;
                 emit!(file, ")")?;
                 file.line_end()?;
 
@@ -525,7 +491,7 @@ impl<'a> Codegen<'a> {
             StatementKind::While { condition, body } => {
                 file.line_start()?;
                 emit!(file, "while (")?;
-                self.codegen_expr(file, *condition, true)?;
+                self.codegen_expr(file, *condition)?;
                 emit!(file, ")")?;
                 file.line_end()?;
 
@@ -540,7 +506,7 @@ impl<'a> Codegen<'a> {
 
                 file.line_start()?;
                 emit!(file, "while (")?;
-                self.codegen_expr(file, *condition, true)?;
+                self.codegen_expr(file, *condition)?;
                 emit!(file, ")")?;
                 file.line_end_semicolon()?;
             }
@@ -549,7 +515,7 @@ impl<'a> Codegen<'a> {
             StatementKind::Return { expr } => {
                 file.line_start()?;
                 emit!(file, "return ")?;
-                self.codegen_expr(file, *expr, true)?;
+                self.codegen_expr(file, *expr)?;
                 file.line_end_semicolon()?;
             }
             StatementKind::Break => {
@@ -594,12 +560,7 @@ impl<'a> Codegen<'a> {
         Ok(())
     }
 
-    fn codegen_expr<W: Write>(
-        &self,
-        file: &mut CppEmitter<'a, W>,
-        expr: ExprIdx,
-        is_prev: bool,
-    ) -> Result<()> {
+    fn codegen_expr<W: Write>(&self, file: &mut CppEmitter<'a, W>, expr: ExprIdx) -> Result<()> {
         let expr = self.ast.get_expr(expr);
 
         match &expr.kind {
@@ -623,11 +584,11 @@ impl<'a> Codegen<'a> {
                 match op_equivalent {
                     OperatorType::Infix(name) => {
                         emit!(file, "{}", name)?;
-                        self.codegen_expr(file, *expr, is_prev)?;
+                        self.codegen_expr(file, *expr)?;
                     }
 
                     OperatorType::Function(name) => {
-                        self.codegen_expr(file, *expr, is_prev)?;
+                        self.codegen_expr(file, *expr)?;
                         emit!(file, ".{}()", name)?;
                     }
                 };
@@ -658,36 +619,36 @@ impl<'a> Codegen<'a> {
 
                 match op_equivalent {
                     OperatorType::Infix(name) => {
-                        self.codegen_expr(file, *lhs, is_prev)?;
+                        self.codegen_expr(file, *lhs)?;
                         emit!(file, " {} ", name)?;
-                        self.codegen_expr(file, *rhs, is_prev)?;
+                        self.codegen_expr(file, *rhs)?;
                     }
 
                     OperatorType::Function(name) => {
-                        self.codegen_expr(file, *lhs, is_prev)?;
+                        self.codegen_expr(file, *lhs)?;
                         emit!(file, ".{}(", name)?;
-                        self.codegen_expr(file, *rhs, is_prev)?;
+                        self.codegen_expr(file, *rhs)?;
                         emit!(file, ")")?;
                     }
                 }
             }
             ExprKind::Concatenation { exprs: _ } => todo!("codegen Concatenation"),
             ExprKind::PartSelect { lhs, rhs, target } => {
-                self.codegen_signal_ref(file, *target, is_prev)?;
+                self.codegen_signal_ref(file, *target)?;
                 emit!(file, ".select_part(")?;
-                self.codegen_expr(file, *lhs, false)?;
+                self.codegen_expr(file, *lhs)?;
                 emit!(file, ", ")?;
-                self.codegen_expr(file, *rhs, false)?;
+                self.codegen_expr(file, *rhs)?;
                 emit!(file, ")")?;
             }
             ExprKind::BitSelect { expr, target } => {
-                self.codegen_signal_ref(file, *target, is_prev)?;
+                self.codegen_signal_ref(file, *target)?;
                 emit!(file, ".select_bit(")?;
-                self.codegen_expr(file, *expr, false)?;
+                self.codegen_expr(file, *expr)?;
                 emit!(file, ")")?;
             }
             ExprKind::SignalRef { signal } => {
-                self.codegen_signal_ref(file, *signal, is_prev)?;
+                self.codegen_signal_ref(file, *signal)?;
             }
             ExprKind::Invalid => unreachable!(),
         };
@@ -760,7 +721,6 @@ impl<'a> Codegen<'a> {
         &self,
         file: &mut CppEmitter<'a, W>,
         idx: SignalIdx,
-        is_prev: bool,
     ) -> Result<()> {
         let signal = self.ast.get_signal(idx);
 
@@ -771,9 +731,7 @@ impl<'a> Codegen<'a> {
             }
 
             SignalLifetime::Static | SignalLifetime::Net => {
-                let array_name = if is_prev { "prev" } else { "next" };
-
-                emit!(file, "{array_name}[tid].{}", self.signal_name(idx))?;
+                emit!(file, "state[tid].{}", self.signal_name(idx))?;
             }
         }
 
@@ -796,7 +754,6 @@ pub fn codegen_into_files<W: Write>(
 
     Ok(())
 }
-
 
 fn gather_all_static_signals(ast: &Ast) -> Vec<SignalIdx> {
     // NOTE: Doing it this way also includes signals that may not be used anywhere. Probably sub

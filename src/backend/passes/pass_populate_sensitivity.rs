@@ -16,7 +16,9 @@ pub fn run_pass_populate_sensitivity(ast: &mut Ast) {
         let mut signal_set = HashSet::new();
 
         let process = ast.get_process(process_idx);
-        collect_signals_statement(&ast, &mut signal_set, &top_scope_signals, process.statement);
+        for statement in process.statements.clone() {
+            collect_signals_statement(&ast, &mut signal_set, &top_scope_signals, statement);
+        }
 
         let process = ast.get_process_mut(process_idx);
 
@@ -44,11 +46,7 @@ fn collect_signals_statement(
     let statement = ast.get_statement(statement_idx);
 
     match &statement.kind {
-        StatementKind::Assignment {
-            lhs: _,
-            rhs,
-            blocking: _,
-        } => {
+        StatementKind::Assignment { lhs: _, rhs, .. } => {
             collect_signals_expr(ast, signals, top_scope_signals, *rhs);
         }
         StatementKind::Block {
@@ -91,9 +89,6 @@ fn collect_signals_statement(
 
         StatementKind::Case => todo!(),
         StatementKind::Foreach => todo!(),
-
-        StatementKind::SimpleAssignmentParts { .. } => todo!("SimpleAssignmentParts"),
-        StatementKind::SimpleAssignment { .. } => todo!("SimpleAssignment"),
     };
 }
 
