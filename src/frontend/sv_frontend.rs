@@ -1034,58 +1034,6 @@ impl SvFrontend {
                     top_deferred_statements,
                     scope,
                 );
-
-                todo!();
-
-                // let blocking = statement.vpi_get_bool(sl::vpiBlocking);
-                // let lhs =
-                //     self.translate_expr(statement.vpi_handle(sl::vpiLhs).expect("No lhs found"));
-                // let rhs =
-                //     self.translate_expr(statement.vpi_handle(sl::vpiRhs).expect("No rhs found"));
-                //
-                // let op = statement.vpi_get(sl::vpiOpType);
-                //
-                // // FIXME: Standard 11.4.1, any left-hand index operation is only supposed to
-                // //        be evaluated once, but we don't really have a way to enforce this yet.
-                // //        Look into this eventually.
-                // // NOTE : Sometimes the normal assignment returns zero as the operation type.
-                // //        This is not what the standard says but oh well.
-                // let actual_rhs = if op == sl::vpiAssignmentOp || op == 0 {
-                //     rhs
-                // } else {
-                //     let op_kind = match op {
-                //         sl::vpiAddOp => Some(BinaryOperator::Addition),
-                //         sl::vpiSubOp => Some(BinaryOperator::Subtraction),
-                //         sl::vpiMultOp => Some(BinaryOperator::Multiplication),
-                //         sl::vpiDivOp => Some(BinaryOperator::Division),
-                //         sl::vpiModOp => Some(BinaryOperator::Modulo),
-                //         sl::vpiPowerOp => Some(BinaryOperator::Power),
-                //         sl::vpiBitAndOp => Some(BinaryOperator::BitwiseAnd),
-                //         sl::vpiBitOrOp => Some(BinaryOperator::BitwiseOr),
-                //         sl::vpiBitXorOp => Some(BinaryOperator::BitwiseXor),
-                //         sl::vpiRShiftOp => Some(BinaryOperator::RightShift),
-                //         sl::vpiLShiftOp => Some(BinaryOperator::LeftShift),
-                //         sl::vpiArithLShiftOp => todo!("arithmetic shifts"),
-                //         sl::vpiArithRShiftOp => todo!("arithmetic shifts"),
-                //         _ => None,
-                //     };
-                //
-                //     if let Some(kind) = op_kind {
-                //         self.ast.add_expr(Expr {
-                //             token: token.clone(),
-                //             kind: ExprKind::Binary { op: kind, lhs, rhs },
-                //         })
-                //     } else {
-                //         self.err_unsupported(&token, format_args!("assignment operation {op}"));
-                //         rhs
-                //     }
-                // };
-                //
-                // StatementKind::Assignment {
-                //     lhs,
-                //     rhs: actual_rhs,
-                //     blocking,
-                // }
             }
             sl::vpiForever => {
                 let body = self.translate_statement_making_block(
@@ -1645,7 +1593,6 @@ impl SvFrontend {
             scope,
         });
 
-        warn!("Adding signal to scope");
         self.ast.get_scope_mut(scope).signals.push(signal);
 
         signal

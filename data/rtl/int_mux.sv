@@ -8,7 +8,7 @@ module int_mux(
 always_comb begin
     if (sel == 0) begin
         out = a;
-    end else begin 
+    end else begin
         out = b;
     end
 end
