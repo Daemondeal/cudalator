@@ -1,6 +1,7 @@
 private/
 target/
 
+build-run-test
 build/*
 slpp_all/*
 libraries/*

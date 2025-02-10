@@ -1,8 +1,16 @@
 #!/bin/bash
 
-if [ "$2" == "" ] ; then
-    echo "USAGE: ./run_test.sh file top_entity"
+if [ "$1" == "" ] ; then
+    echo "USAGE: ./tools/run_test.sh file <top_entity>"
     exit -1
+fi
+
+if [ "$2" == "" ] ; then
+    top_entity=$(basename $file .sv)
+    echo -e "\e[33mNOTE: assuming top entity name is $top_entity\e[0m"
+    echo ""
+else
+    top_entity=$2
 fi
 
 file=$(realpath $1)
@@ -15,23 +23,22 @@ if [ ! -f "$file" ] ; then
     exit -1
 fi
 
+workdir=$PWD/build-run-test
+rm -rf $workdir
+mkdir -p $workdir
+cd $workdir
 
-outdir=$PWD/output
-mkdir -p $outdir
 
 set -e
 
-rm -rf build
-mkdir -p build
-cd build
 
 # QuestaSim
 vlog $file
-vsim -do "run -all" -do "quit" $top_entity -c > $outdir/questasim.log 
+vsim -do "run -all" -do "quit" $top_entity -c > $workdir/questasim.log 
 
 # Icarus Verilog
 iverilog -g2012 $file -o test
-vvp ./test > $outdir/icarus.log
+vvp ./test > $workdir/icarus.log
 
 # Verilator
 
@@ -60,7 +67,7 @@ int main(int argc, char **argv)
 EOM
 
 verilator -cc $file --build --exe --timing ./sim_main.cpp
-"./obj_dir/V$name" > $outdir/verilator.log
+"./obj_dir/V$name" > $workdir/verilator.log
 
 
 # Printing
@@ -69,10 +76,10 @@ verilator -cc $file --build --exe --timing ./sim_main.cpp
 printf "\n### DONE ###"
 
 printf "\nQuestaSim:\n"
-grep -A 30000 "# run -all" $outdir/questasim.log
+grep -A 30000 "# run -all" $workdir/questasim.log
 
 printf "\nVerilator:\n"
-cat $outdir/verilator.log
+cat $workdir/verilator.log
 
 printf "\nIcarus:\n"
-cat $outdir/icarus.log
+cat $workdir/icarus.log

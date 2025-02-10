@@ -1,4 +1,4 @@
-#include <iostream>
+#include <fmt/core.h>
 
 #include "codegen/module.hpp"
 #include "runtime/Runtime.hpp"
@@ -11,11 +11,10 @@ static void apply_input(StateType *dut, int circuit_idx, int cycle) {
 int main() {
     Circuit circuit(1);
 
-    std::cout << "Starting Simulation\n";
+    fmt::println("Starting Simulation");
     for (int i = 0; i < 10; i++) {
         circuit.apply_input(apply_input);
         circuit.eval();
     }
-    std::cout << "Simulation Done!\n";
-
+    fmt::println("Simulation Done!");
 }
