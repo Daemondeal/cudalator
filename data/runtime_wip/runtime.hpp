@@ -3,6 +3,18 @@
 #include <initializer_list>
 #include <string>
 
+/**
+ * -- non ho idea di cosa volessi dire con questo commento
+Quindi praticamente l'idea è che ci arriva un vettore
+Bit<128> a = [{0, 0, 0, 1}];
+2^96
+Bit<96> a = Bit<128>({qua i valori})
+E per i signed scusa? Non stiamo facendo nulla, cosa cambia?
+
+// TODO: ti mancano i reduction operators che ti collassano il vettore ad
+// uno scalare
+*/
+
 template <int N>
 class Bit {
     static_assert(N > 0 && N <= 128, "Bit width must be between 1 and 128");
@@ -47,28 +59,32 @@ public:
     static constexpr int max(uint32_t a, uint32_t b) { return (a > b) ? a : b; }
 
     // Usual constructor by {}
-    Bit(std::initializer_list<uint32_t> init) {
-        copy_from_init(init);
-        return *this;
+    Bit(std::initializer_list<uint32_t> init) { copy_from_init(init); }
+
+    // Constructor from single value (for now just for debugging purposes, up to
+    // 64 bits)
+    explicit Bit(uint64_t value) {
+        chunks.fill(0);
+        if (num_chunks > 0) {
+            chunks[0] = static_cast<uint32_t>(value);
+        }
+        if (num_chunks > 1) {
+            chunks[1] = static_cast<uint32_t>(value >> 32);
+        }
+        apply_mask();
     }
 
-    // Assignement for the usual {}, used to modify the value of a bit vector
+    // Assignment for the usual {}, used to modify the value of a bit vector
     Bit& operator=(std::initializer_list<uint32_t> init) {
         copy_from_init(init);
         return *this;
     }
 
-    // Assignement like Bit<N> = Bit<M>. If M<N then the MSB's are zeroed,
-    // otherwise they are lost. I'm returning a reference because that's what
-    // usually happens, if you want to change it in theory there should be no
-    // problems
-    // https://stackoverflow.com/questions/15292892/what-is-the-return-type-of-the-built-in-assignment-operator
+    // Assignment like Bit<N> = Bit<M>. If M<N then the MSB's are zeroed,
+    // otherwise they are lost.
     template <int M>
     Bit& operator=(const Bit<M>& rhs) {
-        // TODO: verifica con Pietro non siano possibili cose strane coi range
-        // tipo Bit<100> a con tutti i bit settati e poi a = Bit<64>b dove i
-        // lower 64 saranno di b e i MSB rimangono a 1
-        chunks.fill(0);
+        chunks.fill(0); // MSB at zero
 
         // Copy as many chunks as fit
         constexpr int thisChunks = num_chunks;
@@ -110,7 +126,7 @@ public:
 
     template <int M>
     Bit<max(N, M)> operator-(const Bit<M>& rhs) const {
-        // I'm assuming Bit<max(N, M)> as the output lenght because
+        // I'm assuming Bit<max(N, M)> as the output length because
         // in the worst case i'm doing like x-0 so the result is x
         Bit<max(N, M)> result;
 
@@ -154,7 +170,7 @@ public:
                 carry = (product >> 32) + (temp >> 32);
             }
             if (i + rhs.num_chunks < result.num_chunks) {
-                result.chunks[i + rhs.num_chunks] =
+                result.chunks[i + rhs.num_chunks] +=
                     static_cast<uint32_t>(carry);
             }
         }
@@ -162,42 +178,96 @@ public:
         return result;
     }
 
-    // TODO: in realtà verifica questa cosa perché in ogni caso un vettore da
-    // più di 128 tu in ogni caso non dovresti averlo
+    // Power function with result capped at 128 bits
+    // TODO: parlane con Pietro, ok che è O(log n) però jesus, rimuovendo la
+    // static_assert potrei usare l'operatore * che già c'è
     template <int M>
-    Bit<N * M> pow(const Bit<M>& exponent) const {
+    Bit<((N * M) > 128 ? 128 : (N * M))> pow(const Bit<M>& exponent) const {
+        constexpr int ResultBits = ((N * M) > 128) ? 128 : (N * M);
+
         if (*this == Bit(0) && exponent == Bit<M>(0)) {
-            return Bit<N * M>(1);
+            return Bit<ResultBits>(1);
         }
 
-        Bit<N * M> result(1);
-        Bit<N * M> base = *this;
+        Bit<ResultBits> result(1);
+        Bit<ResultBits> base;
+        base = *this; // Use assignment operator for conversion
         Bit<M> exp = exponent;
 
         // Early exit if base is zero
-        if (base == Bit<N * M>(0)) {
-            return Bit<N * M>(0);
+        if (base == Bit<ResultBits>(0)) {
+            return Bit<ResultBits>(0);
         }
 
         while (exp != Bit<M>(0)) {
             if ((exp.chunks[0] & 1) != 0) {
-                result = result * base;
+                // Manual multiplication: result = result * base
+                Bit<ResultBits> temp;
+                for (int i = 0; i < result.num_chunks; ++i) {
+                    uint64_t carry = 0;
+                    for (int j = 0; j < base.num_chunks; ++j) {
+                        if (i + j >= temp.num_chunks)
+                            break;
+                        uint64_t product =
+                            static_cast<uint64_t>(result.chunks[i]) *
+                            base.chunks[j];
+                        uint64_t sum =
+                            static_cast<uint64_t>(temp.chunks[i + j]) +
+                            (product & 0xFFFFFFFF) + carry;
+                        temp.chunks[i + j] = static_cast<uint32_t>(sum);
+                        carry = (product >> 32) + (sum >> 32);
+                    }
+                    if (i + base.num_chunks < temp.num_chunks && carry > 0) {
+                        temp.chunks[i + base.num_chunks] +=
+                            static_cast<uint32_t>(carry);
+                    }
+                }
+                temp.apply_mask();
+                result = temp;
             }
-            base = base * base;
+
+            // Manual multiplication: base = base * base
+            Bit<ResultBits> squared;
+            for (int i = 0; i < base.num_chunks; ++i) {
+                uint64_t carry = 0;
+                for (int j = 0; j < base.num_chunks; ++j) {
+                    if (i + j >= squared.num_chunks)
+                        break;
+                    uint64_t product =
+                        static_cast<uint64_t>(base.chunks[i]) * base.chunks[j];
+                    uint64_t sum =
+                        static_cast<uint64_t>(squared.chunks[i + j]) +
+                        (product & 0xFFFFFFFF) + carry;
+                    squared.chunks[i + j] = static_cast<uint32_t>(sum);
+                    carry = (product >> 32) + (sum >> 32);
+                }
+                if (i + base.num_chunks < squared.num_chunks && carry > 0) {
+                    squared.chunks[i + base.num_chunks] +=
+                        static_cast<uint32_t>(carry);
+                }
+            }
+            squared.apply_mask();
+            base = squared;
+
             exp = exp >> 1;
 
             // Short-circuit if base becomes zero
-            if (base == Bit<N * M>(0))
+            if (base == Bit<ResultBits>(0))
                 break;
         }
         return result;
     }
 
-    // TODO: questo non l'ho controllato, mi devasta il cervello
+    // Division --> return X for division by zero to match Verilog behavior
     Bit operator/(const Bit& divisor) const {
-        // Technically X but it's not implemented
-        if (divisor == Bit(0))
-            return Bit(0);
+        // return X for division by zero
+        if (divisor == Bit(0)) {
+            Bit result;
+            for (int i = 0; i < num_chunks; ++i) {
+                result.chunks[i] = mask[i];
+            }
+            return result;
+        }
 
         Bit dividend = *this;
         Bit quotient;
@@ -217,8 +287,14 @@ public:
     }
 
     Bit operator%(const Bit& divisor) const {
-        if (divisor == Bit(0))
-            return Bit(0);
+        // Return X (all bits set) for modulo by zero
+        if (divisor == Bit(0)) {
+            Bit result;
+            for (int i = 0; i < num_chunks; ++i) {
+                result.chunks[i] = mask[i];
+            }
+            return result;
+        }
 
         Bit remainder;
 
@@ -241,15 +317,17 @@ public:
             if (chunks[i] > rhs.chunks[i])
                 return false;
         }
-        return false; // Equal
+        return false; // equal
     }
 
     template <int M>
     bool operator<(const Bit<M>& rhs) const {
         constexpr int lhs_chunks = num_chunks;
         constexpr int rhs_chunks = (M + 31) / 32;
+        constexpr int max_chunks =
+            (lhs_chunks > rhs_chunks) ? lhs_chunks : rhs_chunks;
 
-        for (int i = std::max(lhs_chunks, rhs_chunks) - 1; i >= 0; --i) {
+        for (int i = max_chunks - 1; i >= 0; --i) {
             uint32_t lhs_chunk = (i < lhs_chunks) ? chunks[i] : 0;
             uint32_t rhs_chunk = (i < rhs_chunks) ? rhs.chunks[i] : 0;
 
@@ -301,11 +379,7 @@ public:
         return result;
     }
 
-    // TODO: ti mancano i reduction operators che ti collassano il vettore ad
-    // uno scalare
-
     // Shift operators
-    // TODO: da controllare, prob sto scrivendo spaghetti code
     Bit operator<<(int shift) const {
         Bit result;
         if (shift >= N)
@@ -314,7 +388,6 @@ public:
         int chunk_shift = shift / 32;
         int bit_shift = shift % 32;
 
-        // O(n) ma ho un'idea
         for (int i = num_chunks - 1; i >= 0; --i) {
             if (i - chunk_shift >= 0) {
                 result.chunks[i] = chunks[i - chunk_shift] << bit_shift;
@@ -327,7 +400,6 @@ public:
         return result;
     }
 
-    // TODO: controlla
     Bit operator>>(int shift) const {
         Bit result;
         if (shift >= N)
@@ -356,7 +428,28 @@ public:
         return true;
     }
 
+    template <int M>
+    bool operator==(const Bit<M>& rhs) const {
+        constexpr int lhs_chunks = num_chunks;
+        constexpr int rhs_chunks = (M + 31) / 32;
+        constexpr int max_chunks =
+            (lhs_chunks > rhs_chunks) ? lhs_chunks : rhs_chunks;
+
+        for (int i = 0; i < max_chunks; ++i) {
+            uint32_t lhs_chunk = (i < lhs_chunks) ? chunks[i] : 0;
+            uint32_t rhs_chunk = (i < rhs_chunks) ? rhs.chunks[i] : 0;
+            if (lhs_chunk != rhs_chunk)
+                return false;
+        }
+        return true;
+    }
+
     bool operator!=(const Bit& rhs) const { return !(*this == rhs); }
+
+    template <int M>
+    bool operator!=(const Bit<M>& rhs) const {
+        return !(*this == rhs);
+    }
 
     /**
         Despite working with chunks of uint32_t, this conversion operator
@@ -366,12 +459,32 @@ public:
     */
     explicit operator uint64_t() const {
         uint64_t value = 0;
-        for (int i = num_chunks - 1; i >= 0; --i) {
-            if (i == 1)
-                value <<= 32;
-            value |= chunks[i];
+
+        // Handle up to 64 bits properly
+        if constexpr (N <= 32) {
+            value = chunks[0];
+            // Mask to N bits
+            value &= ((1ULL << N) - 1);
+        } else if constexpr (N < 64) {
+            if (num_chunks >= 2) {
+                value = static_cast<uint64_t>(chunks[1]) << 32;
+                value |= chunks[0];
+            } else {
+                value = chunks[0];
+            }
+            // Mask to N bits
+            value &= ((1ULL << N) - 1);
+        } else {
+            // N >= 64 -> we can just return the lower 64 bits
+            if (num_chunks >= 2) {
+                value = static_cast<uint64_t>(chunks[1]) << 32;
+                value |= chunks[0];
+            } else {
+                value = chunks[0];
+            }
         }
-        return value & ((1ULL << N) - 1);
+
+        return value;
     }
 
     // Just for debugging purposes
@@ -384,4 +497,8 @@ public:
         }
         return "0x" + str;
     }
+
+    // Per accedere ai private fields ad es con =
+    template <int M>
+    friend class Bit;
 };
