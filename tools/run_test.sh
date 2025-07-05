@@ -5,16 +5,16 @@ if [ "$1" == "" ] ; then
     exit -1
 fi
 
+file=$(realpath $1)
+
 if [ "$2" == "" ] ; then
-    top_entity=$(basename $file .sv)
+    top_entity=$(basename "$file" ".sv")
     echo -e "\e[33mNOTE: assuming top entity name is $top_entity\e[0m"
     echo ""
 else
     top_entity=$2
 fi
 
-file=$(realpath $1)
-top_entity=$2
 name=$(basename $file .sv) 
 
 
@@ -34,7 +34,7 @@ set -e
 
 # QuestaSim
 vlog $file
-vsim -do "run -all" -do "quit" $top_entity -c > $workdir/questasim.log 
+vsim $top_entity -c -do "run -all" -do "quit"  > $workdir/questasim.log 
 
 # Icarus Verilog
 iverilog -g2012 $file -o test

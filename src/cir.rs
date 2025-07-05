@@ -88,7 +88,6 @@ pub struct Scope {
     pub is_top: bool,
 }
 
-
 impl Scope {
     pub fn find_signal(&self, ast: &Ast, full_name: &str) -> Option<SignalIdx> {
         for idx in &self.signals {
@@ -185,6 +184,7 @@ pub struct Statement {
     pub kind: StatementKind,
 }
 
+#[derive(Clone, Copy)]
 pub enum UnaryOperator {
     UnaryMinus,
     UnaryPlus,
@@ -217,8 +217,28 @@ impl UnaryOperator {
             UnaryOperator::Negedge => "negedge",
         }
     }
+
+    // LRM 11.6.1 Table 11-21
+    pub fn get_size(&self, length_i: usize) -> usize {
+        match self {
+            UnaryOperator::UnaryMinus
+            | UnaryOperator::UnaryPlus
+            | UnaryOperator::BinaryNegation => length_i,
+
+            UnaryOperator::Not
+            | UnaryOperator::ReductionAnd
+            | UnaryOperator::ReductionNand
+            | UnaryOperator::ReductionOr
+            | UnaryOperator::ReductionNor
+            | UnaryOperator::ReductionXor
+            | UnaryOperator::ReductionXnor => 1,
+
+            UnaryOperator::Posedge | UnaryOperator::Negedge => 1,
+        }
+    }
 }
 
+#[derive(Clone, Copy)]
 pub enum BinaryOperator {
     Subtraction,
     Division,
@@ -265,6 +285,35 @@ impl BinaryOperator {
             BinaryOperator::BitwiseOr => "bw_or",
             BinaryOperator::BitwiseXor => "bw_xor",
             BinaryOperator::BitwiseXnor => "bw_xnor",
+        }
+    }
+
+    // LRM 11.6.1 Table 11-21
+    pub fn get_size(&self, length_i: usize, length_j: usize) -> usize {
+        match self {
+            BinaryOperator::Addition
+            | BinaryOperator::Subtraction
+            | BinaryOperator::Multiplication
+            | BinaryOperator::Division
+            | BinaryOperator::Modulo
+            | BinaryOperator::BitwiseAnd
+            | BinaryOperator::BitwiseOr
+            | BinaryOperator::BitwiseXor
+            | BinaryOperator::BitwiseXnor => std::cmp::max(length_i, length_j),
+
+            BinaryOperator::Equality
+            | BinaryOperator::NotEquality
+            | BinaryOperator::GreaterThan
+            | BinaryOperator::GreaterThanEq
+            | BinaryOperator::LessThan
+            | BinaryOperator::LessThanEq => 1,
+
+            // TODO: Operands are sized to max(L(i),L(j))
+            BinaryOperator::LogicalAnd | BinaryOperator::LogicalOr => 1,
+
+            BinaryOperator::LeftShift | BinaryOperator::RightShift | BinaryOperator::Power => {
+                length_i
+            }
         }
     }
 }
@@ -318,9 +367,17 @@ pub struct Signal {
     pub scope: ScopeIdx,
 }
 
+impl Signal {
+    pub fn size(&self, ast: &Ast) -> usize {
+        let typ = ast.get_typ(self.typ);
+        return typ.size;
+    }
+}
+
 pub struct Expr {
     pub token: Token,
     pub kind: ExprKind,
+    pub size: usize,
 }
 
 pub enum TypeKind {
@@ -337,6 +394,7 @@ pub struct Type {
 
     pub kind: TypeKind,
     pub is_signed: bool,
+    pub size: usize,
 }
 
 #[derive(Clone)]
@@ -366,7 +424,7 @@ pub enum ConstantKind {
 pub struct Constant {
     pub token: Token,
 
-    pub size: u32,
+    pub size: usize,
     pub kind: ConstantKind,
 }
 

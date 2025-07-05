@@ -5,7 +5,10 @@ use num_traits::Num;
 use surelog_sys::{VpiHandle, VpiValue};
 
 use crate::cir::{
-    Ast, BinaryOperator, Constant, ConstantIdx, ConstantKind, Expr, ExprIdx, ExprKind, Module, ModuleIdx, ModulePort, PortDirection, Process, ProcessIdx, Range, Scope, ScopeIdx, SelectKind, SensitivtyKind, Signal, SignalIdx, SignalLifetime, Statement, StatementIdx, StatementKind, Token, Type, TypeIdx, TypeKind, UnaryOperator
+    Ast, BinaryOperator, Constant, ConstantIdx, ConstantKind, Expr, ExprIdx, ExprKind, Module,
+    ModuleIdx, ModulePort, PortDirection, Process, ProcessIdx, Range, Scope, ScopeIdx, SelectKind,
+    SensitivtyKind, Signal, SignalIdx, SignalLifetime, Statement, StatementIdx, StatementKind,
+    Token, Type, TypeIdx, TypeKind, UnaryOperator,
 };
 use surelog_sys::bindings as sl;
 
@@ -513,9 +516,15 @@ impl SvFrontend {
 
             if let Some(kind) = op_kind {
                 let lhs = self.translate_expr(vpi_lhs, scope);
+
+                let lhs_len = self.ast.get_expr(lhs).size;
+                let rhs_len = self.ast.get_expr(rhs).size;
+
+                let size = kind.get_size(lhs_len, rhs_len);
                 self.ast.add_expr(Expr {
                     token: token.clone(),
                     kind: ExprKind::Binary { op: kind, lhs, rhs },
+                    size,
                 })
             } else {
                 self.err_unsupported(&token, format_args!("assignment operation {op}"));
@@ -534,6 +543,8 @@ impl SvFrontend {
                 };
 
                 let select = SelectKind::None;
+
+                self.resize_expr_to_min(rhs, self.ast.get_signal(signal).size(&self.ast));
 
                 if blocking {
                     let assignment = self.ast.add_statement(Statement {
@@ -1199,10 +1210,11 @@ impl SvFrontend {
     fn translate_expr(&mut self, expr: VpiHandle, scope: ScopeIdx) -> ExprIdx {
         let token = token_from_vpi(expr);
 
-        let kind = match expr.vpi_type() {
+        let (kind, size) = match expr.vpi_type() {
             sl::vpiConstant => {
                 let constant = self.translate_constant(expr);
-                ExprKind::Constant { constant }
+                let constant_size = self.ast.get_constant(constant).size;
+                (ExprKind::Constant { constant }, constant_size)
             }
             sl::vpiOperation => {
                 let op_type = expr.vpi_get(sl::vpiOpType);
@@ -1229,10 +1241,16 @@ impl SvFrontend {
                         .next()
                         .expect("Cannot find operand for expression");
 
-                    ExprKind::Unary {
-                        op: unary_kind,
-                        expr: self.translate_expr(operand, scope),
-                    }
+                    let expr = self.translate_expr(operand, scope);
+                    let expr_size = self.ast.get_expr(expr).size;
+
+                    (
+                        ExprKind::Unary {
+                            op: unary_kind,
+                            expr,
+                        },
+                        unary_kind.get_size(expr_size),
+                    )
                 } else {
                     let binary = match op_type {
                         sl::vpiSubOp => Some(BinaryOperator::Subtraction),
@@ -1269,25 +1287,33 @@ impl SvFrontend {
                         let rhs =
                             self.translate_expr(operands.next().expect("Cannot find Rhs"), scope);
 
-                        ExprKind::Binary {
-                            op: binary_kind,
-                            lhs,
-                            rhs,
-                        }
+                        let lhs_size = self.ast.get_expr(lhs).size;
+                        let rhs_size = self.ast.get_expr(rhs).size;
+
+                        (
+                            ExprKind::Binary {
+                                op: binary_kind,
+                                lhs,
+                                rhs,
+                            },
+                            binary_kind.get_size(lhs_size, rhs_size),
+                        )
                     } else if op_type == sl::vpiConcatOp {
                         let operands = expr
                             .vpi_iter(sl::vpiOperand)
                             .map(|opr| self.translate_expr(opr, scope))
                             .collect::<Vec<_>>();
 
-                        ExprKind::Concatenation { exprs: operands }
+                        let size = operands.iter().map(|x| self.ast.get_expr(*x).size).sum();
+
+                        (ExprKind::Concatenation { exprs: operands }, size)
                     } else {
                         self.errors.push(FrontendError::other(
                             token.clone(),
                             format!("Unsupported operand type {op_type}"),
                         ));
 
-                        ExprKind::Invalid
+                        (ExprKind::Invalid, 1)
                     }
                 }
             }
@@ -1303,14 +1329,17 @@ impl SvFrontend {
                 let rhs = self.translate_expr(right_range, scope);
 
                 if let Some(signal) = self.get_signal_from_ref(expr, scope) {
-                    ExprKind::PartSelect {
-                        lhs,
-                        rhs,
-                        target: signal,
-                    }
+                    (
+                        ExprKind::PartSelect {
+                            lhs,
+                            rhs,
+                            target: signal,
+                        },
+                        0,
+                    )
                 } else {
                     self.err_signal_not_found(expr);
-                    ExprKind::Invalid
+                    (ExprKind::Invalid, 1)
                 }
             }
             sl::vpiBitSelect => {
@@ -1319,21 +1348,25 @@ impl SvFrontend {
                 let index_idx = self.translate_expr(index, scope);
 
                 if let Some(signal) = self.get_signal_from_ref(expr, scope) {
-                    ExprKind::BitSelect {
-                        expr: index_idx,
-                        target: signal,
-                    }
+                    (
+                        ExprKind::BitSelect {
+                            expr: index_idx,
+                            target: signal,
+                        },
+                        1,
+                    )
                 } else {
                     self.err_signal_not_found(expr);
-                    ExprKind::Invalid
+                    (ExprKind::Invalid, 1)
                 }
             }
             sl::vpiRefObj | sl::vpiRefVar => {
                 if let Some(signal) = self.get_signal_from_ref(expr, scope) {
-                    ExprKind::SignalRef { signal }
+                    let signal_size = self.ast.get_signal(signal).size(&self.ast);
+                    (ExprKind::SignalRef { signal }, signal_size)
                 } else {
                     self.err_signal_not_found(expr);
-                    ExprKind::Invalid
+                    (ExprKind::Invalid, 1)
                 }
             }
 
@@ -1391,11 +1424,11 @@ impl SvFrontend {
                     token.clone(),
                     format!("Unimplemented expr {}", expr.vpi_type()),
                 ));
-                ExprKind::Invalid
+                (ExprKind::Invalid, 1)
             }
         };
 
-        self.ast.add_expr(Expr { token, kind })
+        self.ast.add_expr(Expr { token, kind, size })
     }
 
     fn translate_typespec(&mut self, typespec_ref: VpiHandle, scope: ScopeIdx) -> TypeIdx {
@@ -1414,6 +1447,7 @@ impl SvFrontend {
                     token,
                     kind: TypeKind::Int,
                     is_signed,
+                    size: 32,
                 })
             }
             sl::vpiIntegerTypespec => {
@@ -1423,6 +1457,7 @@ impl SvFrontend {
                     token,
                     kind: TypeKind::Integer,
                     is_signed,
+                    size: 32,
                 })
             }
             sl::vpiLogicTypespec => {
@@ -1442,10 +1477,16 @@ impl SvFrontend {
                     None
                 };
 
+                let size = match &range {
+                    None => 1,
+                    Some(x) => x.size() as usize,
+                };
+
                 self.ast.add_typ(Type {
                     token,
                     kind: TypeKind::Logic(range),
                     is_signed,
+                    size,
                 })
             }
 
@@ -1470,6 +1511,7 @@ impl SvFrontend {
                     token,
                     kind: TypeKind::Bit(range),
                     is_signed,
+                    size: 1,
                 })
             }
 
@@ -1479,6 +1521,7 @@ impl SvFrontend {
                     token,
                     kind: TypeKind::Invalid,
                     is_signed: false,
+                    size: 1,
                 })
             }
         }
@@ -1486,7 +1529,7 @@ impl SvFrontend {
 
     fn translate_constant(&mut self, constant: VpiHandle) -> ConstantIdx {
         let token = token_from_vpi(constant);
-        let size = constant.vpi_get(sl::vpiSize);
+        let size = constant.vpi_get(sl::vpiSize) as usize;
 
         let kind = match constant.vpi_get_value() {
             VpiValue::BinaryString(val) => ConstantKind::Value {
@@ -1578,6 +1621,31 @@ impl SvFrontend {
         scope.find_signal_recursively(&self.ast, &full_name)
     }
 
+    fn resize_expr_to_min(&mut self, expr_idx: ExprIdx, min_size: usize) {
+        {
+            let expr = self.ast.get_expr_mut(expr_idx);
+            expr.size = expr.size.max(min_size);
+        }
+
+        match &self.ast.get_expr(expr_idx).kind {
+            ExprKind::Invalid | ExprKind::Constant { constant: _ } => (),
+            ExprKind::Unary { op: _, expr } => self.resize_expr_to_min(*expr, min_size),
+            ExprKind::Binary { op: _, lhs, rhs } => {
+                let (lhs, rhs) = (*lhs, *rhs);
+                self.resize_expr_to_min(lhs, min_size);
+                self.resize_expr_to_min(rhs, min_size);
+            }
+            ExprKind::Concatenation { exprs: _ } => (), // TODO: Do we have to do anything here? 
+            ExprKind::PartSelect { lhs, rhs, target: _ } => {
+                let (lhs, rhs) = (*lhs, *rhs);
+                self.resize_expr_to_min(lhs, min_size);
+                self.resize_expr_to_min(rhs, min_size);
+            }
+            ExprKind::BitSelect { expr, target: _ } => self.resize_expr_to_min(*expr, min_size),
+            ExprKind::SignalRef { signal: _ } => (),
+        }
+    }
+
     fn make_temp_signal(&mut self, typ: TypeIdx, scope: ScopeIdx) -> SignalIdx {
         let name = format!("__tmp_frontend_{}", self.temp_counter);
         self.temp_counter += 1;
@@ -1599,9 +1667,12 @@ impl SvFrontend {
     }
 
     fn make_signal_ref(&mut self, signal: SignalIdx) -> ExprIdx {
+        let size = self.ast.get_signal(signal).size(&self.ast);
+
         self.ast.add_expr(Expr {
             token: Token::dummy(),
             kind: ExprKind::SignalRef { signal },
+            size,
         })
     }
 
@@ -1616,6 +1687,7 @@ impl SvFrontend {
             token,
             kind: TypeKind::Int,
             is_signed: false,
+            size: 32,
         })
     }
 
@@ -1633,6 +1705,7 @@ impl SvFrontend {
         self.ast.add_expr(Expr {
             token,
             kind: ExprKind::Constant { constant },
+            size: 32,
         })
     }
 
@@ -1649,6 +1722,7 @@ impl SvFrontend {
         self.ast.add_expr(Expr {
             token,
             kind: ExprKind::Constant { constant },
+            size: 32,
         })
     }
 

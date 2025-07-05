@@ -71,6 +71,16 @@ fn main() -> Result<()> {
     prepare_output_folder(&args)?;
     let codegen_folder = args.output_folder.join("src").join("codegen");
 
+    let debug_folder = args.output_folder.join("debug");
+
+    {
+        let file_ast_dump = File::create(debug_folder.join("ast.dump"))?;
+        let mut ast_dump_writer = BufWriter::new(file_ast_dump);
+
+        cir_printer::print_cir_ast(&ast, &mut ast_dump_writer)?;
+    }
+
+
     let path_header = codegen_folder.join("module.hpp");
     let path_source = if args.target_is_cpu {
         codegen_folder.join("module.cpp")
@@ -147,10 +157,12 @@ fn prepare_output_folder(args: &Args) -> Result<()> {
     let output = &args.output_folder;
     let template_folder = PathBuf::from_str("./data/runtime")?;
     let src_dir = output.join("src");
+    let dbg_dir = output.join("debug");
 
     fs::create_dir_all(output)?;
 
     fs::create_dir_all(&src_dir)?;
+    fs::create_dir_all(&dbg_dir)?;
 
     if !fs::exists(src_dir.join("main.cpp"))? {
         fs::copy(
