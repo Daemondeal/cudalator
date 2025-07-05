@@ -4,7 +4,9 @@ use std::{collections::HashMap, io::Write};
 use color_eyre::Result;
 
 use crate::cir::{
-    Ast, BinaryOperator, ConstantIdx, ConstantKind, ExprIdx, ExprKind, ModuleIdx, ProcessIdx, ScopeIdx, SelectKind, SignalIdx, SignalLifetime, StatementIdx, StatementKind, TypeIdx, TypeKind, UnaryOperator
+    Ast, BinaryOperator, ConstantIdx, ConstantKind, ExprIdx, ExprKind, ModuleIdx, ProcessIdx,
+    ScopeIdx, SelectKind, SignalIdx, SignalLifetime, StatementIdx, StatementKind, TypeIdx,
+    TypeKind, UnaryOperator,
 };
 
 pub enum CodegenTarget {
@@ -420,12 +422,7 @@ impl<'a> Codegen<'a> {
         let statement = self.ast.get_statement(statement);
 
         match &statement.kind {
-            StatementKind::Assignment {
-                lhs,
-                rhs,
-                select,
-            } => {
-
+            StatementKind::Assignment { lhs, rhs, select } => {
                 file.line_start()?;
 
                 self.codegen_signal_ref(file, *lhs)?;
@@ -442,7 +439,10 @@ impl<'a> Codegen<'a> {
                         self.codegen_expr(file, *rhs)?;
                         emit!(file, ")")?;
                     }
-                    SelectKind::Parts { lhs: part_lhs, rhs: part_rhs } => {
+                    SelectKind::Parts {
+                        lhs: part_lhs,
+                        rhs: part_rhs,
+                    } => {
                         emit!(file, ".set_range(")?;
                         self.codegen_expr(file, *part_lhs)?;
                         emit!(file, ", ")?;

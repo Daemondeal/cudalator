@@ -31,4 +31,4 @@ cp -f $sim_main "$workdir/src/main.cpp"
 
 # Run the demo
 cd $workdir
-make
+make -j4
