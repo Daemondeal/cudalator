@@ -172,6 +172,7 @@ fn prepare_output_folder(args: &Args) -> Result<()> {
     }
 
     copy_dir_all(template_folder.join("src").join("runtime"), src_dir.join("runtime"))?;
+    copy_dir_all(template_folder.join("src").join("libs"), src_dir.join("libs"))?;
     fs::create_dir_all(src_dir.join("codegen"))?;
     fs::copy(
         template_folder.join("CMakeLists.txt"),
