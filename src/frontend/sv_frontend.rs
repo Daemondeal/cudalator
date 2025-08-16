@@ -95,6 +95,9 @@ fn evaluate_constant_to_u32(constant: &Constant) -> Result<u32, FrontendError> {
                 Ok(vals[0])
             }
         }
+        ConstantKind::AllZero | ConstantKind::AllOnes => {
+            todo!("should never try to parse AllZero or AllOnes, make proper error")
+        }
         ConstantKind::Invalid => unreachable!(),
     }
 }
@@ -241,7 +244,6 @@ impl SvFrontend {
 
         let signal = self.ast.get_signal_mut(signal_idx);
         signal.is_in_top_interface = true;
-
 
         Ok(ModulePort {
             signal: signal_idx,
@@ -1538,9 +1540,22 @@ impl SvFrontend {
         let size = constant.vpi_get(sl::vpiSize) as usize;
 
         let kind = match constant.vpi_get_value() {
-            VpiValue::BinaryString(val) => ConstantKind::Value {
-                vals: str_to_values_le(&val, 2),
-            },
+            VpiValue::BinaryString(val) => {
+                if size == u32::max_value() as usize {
+                    if val == "0" {
+                        ConstantKind::AllZero
+                    } else if val == "1" {
+                        ConstantKind::AllOnes
+                    } else {
+                        self.err_unsupported(&token, format_args!("constant {val}"));
+                        ConstantKind::Invalid
+                    }
+                } else {
+                    ConstantKind::Value {
+                        vals: str_to_values_le(&val, 2),
+                    }
+                }
+            }
             VpiValue::OctalString(val) => ConstantKind::Value {
                 vals: str_to_values_le(&val, 8),
             },
@@ -1641,8 +1656,12 @@ impl SvFrontend {
                 self.resize_expr_to_min(lhs, min_size);
                 self.resize_expr_to_min(rhs, min_size);
             }
-            ExprKind::Concatenation { exprs: _ } => (), // TODO: Do we have to do anything here? 
-            ExprKind::PartSelect { lhs, rhs, target: _ } => {
+            ExprKind::Concatenation { exprs: _ } => (), // TODO: Do we have to do anything here?
+            ExprKind::PartSelect {
+                lhs,
+                rhs,
+                target: _,
+            } => {
                 let (lhs, rhs) = (*lhs, *rhs);
                 self.resize_expr_to_min(lhs, min_size);
                 self.resize_expr_to_min(rhs, min_size);

@@ -1,5 +1,7 @@
 #include "Runtime.hpp"
+#include "ChangeType.hpp"
 #include <cassert>
+#include <fmt/format.h>
 #include <vector>
 
 Circuit::Circuit(int number_of_circuits)
@@ -41,11 +43,30 @@ void Circuit::eval() {
         state_calculate_diff(&m_previous_states[0], &m_states[0], &diff);
 
         for (auto& proc : m_processes) {
-            for (auto signal_idx : proc.sensitivity) {
-                if (diff.is_different[signal_idx]) {
-                    ready_queue.push_back(proc);
+            bool should_run = false;
+            for (auto [signal_idx, change_type]  : proc.sensitivity) {
+                switch (change_type) {
+                case ChangeType::Posedge:
+                    should_run = (diff.change[signal_idx] == ChangeType::Posedge);
+                    break;
+                case ChangeType::Negedge:
+                    should_run = (diff.change[signal_idx] == ChangeType::Negedge);
+                    break;
+                case ChangeType::Change:
+                    should_run = (diff.change[signal_idx] != ChangeType::NoChange);
+                    break;
+                case ChangeType::NoChange:
+                    assert(false);
                     break;
                 }
+                if (should_run) {
+                    break;
+                }
+            }
+
+            if (should_run) {
+                ready_queue.push_back(proc);
+                break;
             }
         }
 
@@ -62,7 +83,6 @@ void Circuit::eval() {
         }
 
         ready_queue.clear();
-
     }
     m_cycles++;
 

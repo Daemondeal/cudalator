@@ -21,7 +21,7 @@ pip install -r requirements.txt
 make
 
 # Runs on a sample circuit
-cargo run
+./tools/run_demo.sh ./demos/adder/
 ```
 
 ## Docs

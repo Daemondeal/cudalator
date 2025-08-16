@@ -78,6 +78,13 @@ public:
         apply_mask();
     }
 
+    Bit& operator=(bool other) {
+        chunks.fill(0);
+        chunks[0] = (other) ? 1 : 0;
+        apply_mask();
+        return *this;
+    }
+
     // Assignment for the usual {}, used to modify the value of a bit vector
     Bit& operator=(std::initializer_list<uint32_t> init) {
         copy_from_init(init);
@@ -425,6 +432,14 @@ public:
     }
 
     // Comparison operators
+    bool operator==(const int& rhs) const {
+        return (*this == Bit<N>(rhs));
+    }
+
+    bool operator!=(const int& rhs) const {
+        return !(*this == rhs);
+    }
+
     bool operator==(const Bit& rhs) const {
         for (int i = 0; i < num_chunks; ++i)
             if (chunks[i] != rhs.chunks[i])
@@ -448,11 +463,24 @@ public:
         return true;
     }
 
+    bool logic_negation() const {
+        return !(bool(this));
+    }
+
     bool operator!=(const Bit& rhs) const { return !(*this == rhs); }
 
     template <int M>
     bool operator!=(const Bit<M>& rhs) const {
         return !(*this == rhs);
+    }
+
+    operator bool() const {
+        for (auto &chunk : chunks) {
+            if (chunk != 0) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

@@ -7,6 +7,7 @@ pub struct VpiIterator {
 }
 
 // TODO: Figure out why time is stored in two separate integers
+#[derive(Debug)]
 pub enum VpiTime {
     SimTime { high: u32, low: u32 },
     ScaledRealTime(f64),
@@ -27,6 +28,7 @@ impl VpiTime {
     }
 }
 
+#[derive(Debug)]
 pub enum VpiValue {
     BinaryString(String),
     OctalString(String),
