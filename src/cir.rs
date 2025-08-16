@@ -365,6 +365,8 @@ pub struct Signal {
     pub lifetime: SignalLifetime,
     pub full_name: String,
     pub scope: ScopeIdx,
+
+    pub is_in_top_interface: bool,
 }
 
 impl Signal {

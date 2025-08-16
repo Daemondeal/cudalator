@@ -713,7 +713,12 @@ impl<'a> Codegen<'a> {
 
     fn signal_name(&self, idx: SignalIdx) -> String {
         let signal = self.ast.get_signal(idx);
-        format!("{}_{}", clean_ident(&signal.full_name), idx.get_idx())
+
+        if signal.is_in_top_interface {
+            signal.token.name.clone()
+        } else {
+            format!("{}_{}", clean_ident(&signal.full_name), idx.get_idx())
+        }
     }
 
     // Generate the name to refer to a signal inside a kernel

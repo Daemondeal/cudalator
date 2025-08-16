@@ -239,6 +239,10 @@ impl SvFrontend {
             FrontendError::other(token.clone(), format!("Cannot find signal {}", token.name))
         })?;
 
+        let signal = self.ast.get_signal_mut(signal_idx);
+        signal.is_in_top_interface = true;
+
+
         Ok(ModulePort {
             signal: signal_idx,
             direction,
@@ -338,6 +342,7 @@ impl SvFrontend {
             typ: type_idx,
             lifetime: SignalLifetime::Net,
             scope,
+            is_in_top_interface: false,
         });
 
         self.ast.get_scope_mut(scope).signals.push(signal_idx);
@@ -366,6 +371,7 @@ impl SvFrontend {
             typ: type_idx,
             lifetime,
             scope,
+            is_in_top_interface: false,
         });
 
         self.ast.get_scope_mut(scope).signals.push(signal_idx);
@@ -1659,6 +1665,7 @@ impl SvFrontend {
             lifetime: SignalLifetime::Automatic,
             full_name: name,
             scope,
+            is_in_top_interface: false,
         });
 
         self.ast.get_scope_mut(scope).signals.push(signal);
