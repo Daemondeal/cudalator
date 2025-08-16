@@ -1,18 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-# Using the {fmt} library to make demos easier to write
-# NOTE: It's a bit ugly to add a dependency like this to a runtime,
-#        but it's probably preferrable than requiring a C++23 compiler.
-# FIXME: Maybe we should just remove this and deal with normal C++ iostream
-include(FetchContent)
-FetchContent_Declare(
-  fmt
-  GIT_REPOSITORY https://github.com/fmtlib/fmt
-  GIT_TAG        e69e5f977d458f2650bb346dadf2ad30c5320281) # 10.2.1
-FetchContent_MakeAvailable(fmt)
-
 # TODO: Add CUDA
-
 project(
     run_simulation
     VERSION 0.1.0
@@ -20,6 +8,7 @@ project(
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_BUILD_TYPE Debug)
 
 # TODO: Move to CUDA
 add_executable(
@@ -27,6 +16,7 @@ add_executable(
     src/main.cpp
     src/codegen/module.cpp
     src/runtime/Runtime.cpp
+    src/libs/format.cc
 )
 
-target_link_libraries(run_simulation fmt::fmt)
+target_link_libraries(run_simulation)

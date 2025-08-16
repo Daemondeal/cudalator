@@ -535,7 +535,7 @@ struct fmt::formatter<Bit<N>> {
     }
 
     template <typename FormatContext>
-    auto format(const Bit<N>& n, FormatContext& ctx) {
+    auto format(const Bit<N>& n, FormatContext& ctx) const {
         return Bit<N>::format(n, ctx);
     }
 };
