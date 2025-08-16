@@ -1,6 +1,8 @@
 #pragma once
 
+#include "ChangeType.hpp"
 #include <cstdint>
+#include <string>
 #include <vector>
 
 template <typename S>
@@ -9,11 +11,17 @@ public:
     typedef void (*process_signature_t)(S* state, size_t len);
 
     Process() = delete;
-    Process(process_signature_t fp, std::vector<uint32_t> sens)
-        : function_pointer(fp)
+    Process(
+        std::string name,
+        process_signature_t fp,
+        std::vector<std::tuple<uint32_t, ChangeType>> sens
+    )
+        : name(name)
+        , function_pointer(fp)
         , sensitivity(sens) {
     }
 
+    std::string name;
     process_signature_t function_pointer;
-    std::vector<uint32_t> sensitivity;
+    std::vector<std::tuple<uint32_t, ChangeType>> sensitivity;
 };

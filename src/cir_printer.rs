@@ -252,6 +252,8 @@ fn sexpr_convert_constant<'a>(ast: &'a Ast, constant_idx: ConstantIdx) -> SExpr<
                 .collect();
             SExpr::expr("constant", children)
         }
+        ConstantKind::AllZero => SExpr::atom("'0"),
+        ConstantKind::AllOnes => SExpr::atom("'1"),
         ConstantKind::Invalid => SExpr::atom("invalid_constant"),
     }
 }

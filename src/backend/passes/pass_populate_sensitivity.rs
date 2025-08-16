@@ -16,6 +16,9 @@ pub fn run_pass_populate_sensitivity(ast: &mut Ast) {
         let mut signal_set = HashSet::new();
 
         let process = ast.get_process(process_idx);
+        if !process.should_populate_sensitivity_list {
+            continue;
+        }
         for statement in process.statements.clone() {
             collect_signals_statement(&ast, &mut signal_set, &top_scope_signals, statement);
         }

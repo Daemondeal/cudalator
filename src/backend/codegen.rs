@@ -5,8 +5,8 @@ use color_eyre::Result;
 
 use crate::cir::{
     Ast, BinaryOperator, ConstantIdx, ConstantKind, ExprIdx, ExprKind, ModuleIdx, ProcessIdx,
-    ScopeIdx, SelectKind, SignalIdx, SignalLifetime, StatementIdx, StatementKind, TypeIdx,
-    TypeKind, UnaryOperator,
+    ScopeIdx, SelectKind, SensitivtyKind, SignalIdx, SignalLifetime, StatementIdx, StatementKind,
+    TypeIdx, TypeKind, UnaryOperator,
 };
 
 pub enum CodegenTarget {
@@ -143,6 +143,7 @@ impl<'a> Codegen<'a> {
         emit!(header, "#pragma once\n")?;
         emit!(header, "#include \"../runtime/Process.hpp\"\n")?;
         emit!(header, "#include \"../runtime/Bit.hpp\"\n")?;
+        emit!(header, "#include \"../runtime/ChangeType.hpp\"\n")?;
         emit!(header, "#include <vector>\n")?;
         emit!(header, "#include <cstddef>\n")?;
         header.emit_empty_line()?;
@@ -228,7 +229,7 @@ impl<'a> Codegen<'a> {
 
             emit!(
                 source,
-                "diffs[tid].is_different[{i}] = (start[tid].{} != end[tid].{})",
+                "diffs[tid].change[{i}] = change_calculate(start[tid].{}, end[tid].{})",
                 self.signal_name(*signal),
                 self.signal_name(*signal)
             )?;
@@ -283,6 +284,7 @@ impl<'a> Codegen<'a> {
 
             source.line_start()?;
             emit!(source, "result.push_back(Process<state_{}>(", self.top_name)?;
+            emit!(source, "\"{}\", ", process_name(*process))?;
             emit!(source, "{}, ", process_name(*process))?;
 
             // Emit the list of the ids of all signals inside the sensitivity list
@@ -290,11 +292,20 @@ impl<'a> Codegen<'a> {
             let signals = ast_process
                 .sensitivity_list
                 .iter()
-                .map(|(_, idx)| {
-                    self.top_signal_map
+                .map(|(kind, idx)| {
+                    let sens = match kind {
+                        SensitivtyKind::OnChange => "ChangeType::Change",
+                        SensitivtyKind::Posedge => "ChangeType::Posedge",
+                        SensitivtyKind::Negedge => "ChangeType::Negedge",
+                    };
+
+                    let signal_name = self
+                        .top_signal_map
                         .get(idx)
                         .expect("signal not found in codegen")
-                        .to_string()
+                        .to_string();
+
+                    format!("std::make_pair({signal_name}, {sens})")
                 })
                 .collect::<Vec<_>>()
                 .join(", ");
@@ -322,7 +333,7 @@ impl<'a> Codegen<'a> {
         header.block_start()?;
 
         header.line_start()?;
-        emit!(header, "bool is_different[{}]", top_scope.signals.len())?;
+        emit!(header, "ChangeType change[{}]", top_scope.signals.len())?;
         header.line_end_semicolon()?;
 
         header.block_end_semicolon()?;
@@ -552,7 +563,15 @@ impl<'a> Codegen<'a> {
                     todo!("codegen constant bigger than 32 bits");
                 }
 
-                emit!(file, "make_bit<{}>({})", constant.size, vals[0])?;
+                emit!(file, "Bit<{}>({})", constant.size, vals[0])?;
+            }
+            // TODO: This should be done better
+            ConstantKind::AllOnes => {
+                todo!("codegen AllOnes")
+                // emit!(file, "Bit<128>()")?;
+            }
+            ConstantKind::AllZero => {
+                emit!(file, "Bit<128>(0)")?;
             }
             ConstantKind::Invalid => unreachable!(),
         };
@@ -569,7 +588,7 @@ impl<'a> Codegen<'a> {
                 let op_equivalent = match op {
                     UnaryOperator::UnaryMinus => OperatorType::Infix("-"),
                     UnaryOperator::UnaryPlus => OperatorType::Infix("+"),
-                    UnaryOperator::Not => todo!("codegen UnaryNot"),
+                    UnaryOperator::Not => OperatorType::Function("logic_negation"),
                     UnaryOperator::BinaryNegation => todo!("codegen BinaryNegation"),
                     UnaryOperator::ReductionAnd => todo!("codegen ReductionAnd"),
                     UnaryOperator::ReductionNand => todo!("codegen ReductionNand"),

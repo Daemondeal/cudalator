@@ -45,7 +45,7 @@ impl SignalIdx {
 }
 
 // TODO: Maybe this needs another name
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Token {
     pub name: String,
     pub line: u32,
@@ -415,14 +415,18 @@ impl Range {
     }
 }
 
+#[derive(Debug)]
 pub enum ConstantKind {
     Integer(i64),
     UnsignedInteger(u64),
     Value { vals: Vec<u32> },
+    AllZero,
+    AllOnes,
     Invalid,
 }
 
 // TODO: This needs to be done properly
+#[derive(Debug)]
 pub struct Constant {
     pub token: Token,
 

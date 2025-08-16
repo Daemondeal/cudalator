@@ -16,7 +16,7 @@ struct state_work__double_int_adder
 
 struct diff_work__double_int_adder
 {
-  bool is_different[5];
+  ChangeType change[5];
 };
 
 void state_calculate_diff(state_work__double_int_adder* start, state_work__double_int_adder* end, diff_work__double_int_adder* diffs);

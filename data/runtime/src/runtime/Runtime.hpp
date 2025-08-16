@@ -18,6 +18,10 @@ public:
     void apply_input(ApplyInputFunc func);
     void eval();
 
+    StateType &get_state(int idx) {
+        return m_states[idx];
+    }
+
 private:
     std::vector<ProcType> m_processes;
     std::vector<StateType> m_states;
