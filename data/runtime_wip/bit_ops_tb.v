@@ -1,4 +1,7 @@
 module bit_ops_tb;
+    reg [7:0] a;
+    reg [15:0] b;
+    reg [7:0] c;
     // 28 bit
     reg [27:0] vec28;
     // 35 bit
@@ -71,6 +74,11 @@ module bit_ops_tb;
         vec32_2 = 32'h12345678;
         vec32_3 = vec32_1 + vec32_2;
         $fwrite(fd, "%h", vec32_3);
+
+        a = 8'hFF;
+        b = 16'hFF00;
+        c = a + b;
+        $fwrite(fd, "\na=%h\tb=%h\tc=%h\n", a, b, c);
         $fclose(fd);
         $finish;
     end
