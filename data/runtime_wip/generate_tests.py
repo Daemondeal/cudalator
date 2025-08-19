@@ -20,6 +20,7 @@ OP_MAP = {
     "XOR": {"type": "binary", "verilog": "a ^ b", "cpp": "a ^ b"},
     "EQ": {"type": "binary", "verilog": "a == b", "cpp": "a == b"},
     "NEQ": {"type": "binary", "verilog": "a != b","cpp": "a != b"},
+    "LAND": {"type": "binary", "verilog": "a && b","cpp": "a && b"},
 }
 
 def format_verilog_value(value, width):

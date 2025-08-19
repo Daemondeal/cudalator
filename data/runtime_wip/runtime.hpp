@@ -470,6 +470,20 @@ public:
         return result;
     }
 
+    /**
+     * @brief Logical AND operator
+     * Treats the entire vector as a single boolean value (true if non-zero)
+     */
+    template <int M>
+    Bit<1> operator&&(const Bit<M>& rhs) const {
+        // i'm using the explicit bool conversion to determine if each vector
+        // isnon-zero.
+        bool lhs_is_true = static_cast<bool>(*this);
+        bool rhs_is_true = static_cast<bool>(rhs);
+
+        return Bit<1>(lhs_is_true && rhs_is_true);
+    }
+
     explicit operator uint64_t() const {
         uint64_t value = 0;
         if (num_chunks > 0) {
