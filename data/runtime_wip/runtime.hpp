@@ -1,9 +1,12 @@
+#include <algorithm> // For std::max
 #include <array>
 #include <cstdint>
-#include <iomanip> // for std::hex, std::setw, std::setfill
-#include <limits>
-#include <sstream> // for std::stringstream
+#include <initializer_list>
+#include <iomanip>   // For std::hex, std::setw, std::setfill
+#include <sstream>   // For std::stringstream
+#include <stdexcept> // For std::invalid_argument
 #include <string>
+#include <type_traits> // For std::is_integral_v and std::enable_if_t
 
 /**
  * List of operators we must implement:
@@ -71,20 +74,15 @@ public:
      */
     template <int M>
     Bit(const Bit<M>& rhs) {
-        chunks.fill(0);
-        constexpr int rhs_chunks = (M + 31) / 32;
-        constexpr int chunks_to_copy =
-            num_chunks < rhs_chunks ? num_chunks : rhs_chunks;
-        for (int i = 0; i < chunks_to_copy; ++i) {
-            chunks[i] = rhs.chunks[i];
-        }
-        apply_mask();
+        // reusing the assignment operator
+        *this = rhs;
     }
 
     /**
      * @brief Assignment from another Bit vector.
-     * Handles assignment from both same-sized and different-sized Bit vectors.
-     * Truncates if the source is larger, zero-extends if it is smaller.
+     * Handles assignment from both same-sized and different-sized Bit
+     * vectors. Truncates if the source is larger, zero-extends if it is
+     * smaller.
      */
     template <int M>
     Bit& operator=(const Bit<M>& rhs) {
@@ -228,7 +226,7 @@ public:
      * @brief Less-than comparison operator
      */
     template <int M>
-    bool operator<(const Bit<M>& rhs) const {
+    Bit<1> operator<(const Bit<M>& rhs) const {
         constexpr int lhs_chunks = num_chunks;
         constexpr int rhs_chunks = (M + 31) / 32;
         constexpr int max_chunks =
@@ -241,21 +239,21 @@ public:
             uint32_t rhs_chunk = (i < rhs_chunks) ? rhs.chunks[i] : 0;
 
             if (lhs_chunk < rhs_chunk) {
-                return true;
+                return Bit<1>(1);
             }
             if (lhs_chunk > rhs_chunk) {
-                return false;
+                return Bit<1>(0);
             }
         }
         // all chunks =
-        return false;
+        return Bit<1>(0);
     }
 
     /**
      * @brief Greater-than comparison operator
      */
     template <int M>
-    bool operator>(const Bit<M>& rhs) const {
+    Bit<1> operator>(const Bit<M>& rhs) const {
         return rhs < *this;
     }
 
@@ -263,7 +261,7 @@ public:
      * @brief Less-than-or-equal-to comparison operator
      */
     template <int M>
-    bool operator<=(const Bit<M>& rhs) const {
+    Bit<1> operator<=(const Bit<M>& rhs) const {
         return !(*this > rhs);
     }
 
@@ -271,8 +269,119 @@ public:
      * @brief greater-than-or-equal-to comparison operator
      */
     template <int M>
-    bool operator>=(const Bit<M>& rhs) const {
+    Bit<1> operator>=(const Bit<M>& rhs) const {
         return !(*this < rhs);
+    }
+
+    /**
+     * @brief logical left shift operator, filling with zeros.
+     */
+    Bit<N> operator<<(int shift) const {
+        Bit<N> result;
+
+        if (shift <= 0) {
+            return *this; // no shift
+        }
+        if (shift >= N) {
+            return result; // shifting by N or more results in zero
+        }
+
+        int chunk_shift = shift / 32;
+        int bit_shift = shift % 32;
+
+        for (int i = num_chunks - 1; i >= chunk_shift; --i) {
+            // the main part of the new chunk comes from the source chunk
+            // shifted left
+            result.chunks[i] = chunks[i - chunk_shift] << bit_shift;
+
+            // if there's a bit_shift, we also need to bring in the high bits
+            // from the previous source chunk.
+            if (bit_shift > 0 && i > chunk_shift) {
+                result.chunks[i] |=
+                    chunks[i - chunk_shift - 1] >> (32 - bit_shift);
+            }
+        }
+
+        result.apply_mask();
+        return result;
+    }
+
+    /**
+     * @brief Logical left shift by another Bit vector (like the Verilog shift
+     * of a variable amount)
+     */
+    template <int M>
+    Bit<N> operator<<(const Bit<M>& shift_amount) const {
+        uint64_t shift_val = static_cast<uint64_t>(shift_amount);
+        return *this << shift_val;
+    }
+
+    /**
+     * @brief Logical right shift operator, filling with zeros
+     */
+    Bit<N> operator>>(int shift) const {
+        Bit<N> result; // zero-initialized by default
+
+        if (shift <= 0) {
+            return *this; // no shift or invalid shift
+        }
+        if (shift >= N) {
+            return result; // shifting by N or more results in zero
+        }
+
+        int chunk_shift = shift / 32;
+        int bit_shift = shift % 32;
+
+        for (int i = 0; i < num_chunks - chunk_shift; ++i) {
+            // the main part of the new chunk comes from the source chunk,
+            // shifted right
+            result.chunks[i] = chunks[i + chunk_shift] >> bit_shift;
+
+            // ff there's a bit_shift, we also need to bring in the low bits
+            // from the next source chunk
+            if (bit_shift > 0 && i + chunk_shift + 1 < num_chunks) {
+                result.chunks[i] |= chunks[i + chunk_shift + 1]
+                                    << (32 - bit_shift);
+            }
+        }
+
+        result.apply_mask();
+        return result;
+    }
+
+    template <int M>
+    Bit<N> operator>>(const Bit<M>& shift_amount) const {
+        uint64_t shift_val = static_cast<uint64_t>(shift_amount);
+        return *this >> shift_val;
+    }
+
+    /**
+     * @brief Logical NOT operator.
+     * Returns Bit<1>(1) if the entire vector is zero, Bit<1>(0) otherwise.
+     */
+    Bit<1> operator!() const {
+        // Check if any bit in any chunk is non-zero.
+        for (int i = 0; i < num_chunks; ++i) {
+            if (chunks[i] != 0) {
+                return Bit<1>(
+                    0); // Vector is not zero, so logical NOT is false.
+            }
+        }
+        // If all chunks are zero, logical NOT is true.
+        return Bit<1>(1);
+    }
+
+    explicit operator uint64_t() const {
+        uint64_t value = 0;
+        if (num_chunks > 0) {
+            value = chunks[0];
+        }
+        if (num_chunks > 1) {
+            value |= static_cast<uint64_t>(chunks[1]) << 32;
+        }
+        // For simplicity, we just return the lower 64 bits.
+        // A more complex implementation could handle overflow.
+        return value;
     }
 
     /**

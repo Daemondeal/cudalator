@@ -1,75 +1,82 @@
 #!/usr/bin/env python3
 import sys
 
+# The "type" is needed to distinguish unary vs. binary ops.
 OP_MAP = {
-    "ADD": {
-        "verilog": "a + b",
-        "cpp": "a + b"
-    },
-    "SUB": {
-        "verilog": "a - b",
-        "cpp": "a - b"
-    },
-    "MUL": {
-        "verilog": "a * b",
-        "cpp": "a * b"
-    },
+    "ADD":    {"type": "binary", "verilog": "a + b", "cpp": "a + b"},
+    "SUB":    {"type": "binary", "verilog": "a - b", "cpp": "a - b"},
+    "MUL":    {"type": "binary", "verilog": "a * b", "cpp": "a * b"},
+    "LT":     {"type": "binary", "verilog": "a < b", "cpp": "a < b"},
+    "GT":     {"type": "binary", "verilog": "a > b", "cpp": "a > b"},
+    "LTE":    {"type": "binary", "verilog": "a <= b","cpp": "a <= b"},
+    "GTE":    {"type": "binary", "verilog": "a >= b","cpp": "a >= b"},
+    "LSHIFT": {"type": "binary", "verilog": "a << b","cpp": "a << b"},
+    "RSHIFT": {"type": "binary", "verilog": "a >> b","cpp": "a >> b"},
+    "LNOT":   {"type": "unary",  "verilog": "!a",    "cpp": "!a"},
 }
 
 def format_verilog_value(value, width):
-    value = value.strip()
-    if value.lower().startswith("0x"):
-        # It's a hex value, format as <width>'h<hex_digits>
-        hex_digits = value[2:] # Strip the "0x"
+    """Formats a value string into a correctly sized Verilog literal."""
+    value = value.strip().upper().replace("ULL", "")
+    if value.startswith("0X"):
+        hex_digits = value[2:]
         return f"{width}'h{hex_digits}"
     else:
-        # It's a decimal value, format as <width>'d<decimal_value>
         return f"{width}'d{value}"
 
+def format_cpp_value(value):
+    """Formats a value for C++, wrapping hex strings in quotes."""
+    value = value.strip()
+    if value.lower().startswith("0x"):
+        return f'"{value}"'
+    else:
+        return value
+
 def generate_verilog(lines):
+    """Generates the Verilog testbench (the 'golden model')."""
     with open("testbench.v", "w") as f:
         f.write("`timescale 1ns / 1ps\n")
         f.write("module testbench;\n")
 
         declarations = set()
         for i, line in enumerate(lines):
-            if line.startswith('#') or not line.strip():
-                continue
+            if line.startswith('#') or not line.strip(): continue
             try:
                 op, w1, v1, w2, v2, w_res = [s.strip() for s in line.split(',')]
-                declarations.add(f"  reg [{int(w1)-1}:0] a_{i};\n")
-                declarations.add(f"  reg [{int(w2)-1}:0] b_{i};\n")
-                declarations.add(f"  reg [{int(w_res)-1}:0] res_{i};\n")
-            except (ValueError, KeyError):
-                continue
+                op_type = OP_MAP[op]["type"]
 
-        for dec in sorted(list(declarations)):
-            f.write(dec)
+                declarations.add(f"  reg [{int(w1)-1}:0] a_{i};\n")
+                if op_type == "binary":
+                    declarations.add(f"  reg [{int(w2)-1}:0] b_{i};\n")
+                declarations.add(f"  reg [{int(w_res)-1}:0] res_{i};\n")
+            except (ValueError, KeyError): continue
+
+        for dec in sorted(list(declarations)): f.write(dec)
         f.write("\n")
 
         f.write("  initial begin\n")
         for i, line in enumerate(lines):
-            if line.startswith('#') or not line.strip():
-                continue
-
+            if line.startswith('#') or not line.strip(): continue
             try:
                 op, w1, v1, w2, v2, w_res = [s.strip() for s in line.split(',')]
+                op_info = OP_MAP[op]
 
                 a_name = f"a_{i}"
-                b_name = f"b_{i}"
                 res_name = f"res_{i}"
-
-                verilog_expr = OP_MAP[op]["verilog"]
+                verilog_expr = op_info["verilog"]
 
                 f.write(f"    {a_name} = {format_verilog_value(v1, w1)};\n")
-                f.write(f"    {b_name} = {format_verilog_value(v2, w2)};\n")
 
-                f.write(f"    {res_name} = {verilog_expr.replace('a', a_name).replace('b', b_name)};\n")
+                if op_info["type"] == "binary":
+                    b_name = f"b_{i}"
+                    f.write(f"    {b_name} = {format_verilog_value(v2, w2)};\n")
+                    f.write(f"    {res_name} = {verilog_expr.replace('a', a_name).replace('b', b_name)};\n")
+                else: # Unary
+                    f.write(f"    {res_name} = {verilog_expr.replace('a', a_name)};\n")
 
                 f.write(f'    $display("Test: {line.strip()} -> Result: %h", {res_name});\n\n')
-
             except (ValueError, KeyError) as e:
-                print(f"Skipping malformed line in test_vectors.txt: {line.strip()} -> {e}")
+                print(f"Skipping malformed line: {line.strip()} -> {e}")
 
         f.write("    #1 $finish;\n")
         f.write("  end\nendmodule\n")
@@ -82,30 +89,32 @@ def generate_cpp(lines):
         f.write('int main() {\n')
 
         for line in lines:
-            if line.startswith('#') or not line.strip():
-                continue
-
+            if line.startswith('#') or not line.strip(): continue
             try:
                 op, w1, v1, w2, v2, w_res = [s.strip() for s in line.split(',')]
+                op_info = OP_MAP[op]
 
-                # For C++, we need to wrap hex strings in quotes for the string constructor
-                cpp_v1 = f'"{v1}"' if v1.lower().startswith("0x") else v1
-                cpp_v2 = f'"{v2}"' if v2.lower().startswith("0x") else v2
-
-                cpp_expr = OP_MAP[op]["cpp"]
+                cpp_v1 = format_cpp_value(v1)
+                cpp_expr = op_info["cpp"]
 
                 f.write("    {\n")
                 f.write(f"        Bit<{w1}> a({cpp_v1});\n")
-                f.write(f"        Bit<{w2}> b({cpp_v2});\n")
-                f.write(f"        Bit<{w_res}> result = {cpp_expr};\n")
+
+                if op_info["type"] == "binary":
+                    cpp_v2 = format_cpp_value(v2)
+                    f.write(f"        Bit<{w2}> b({cpp_v2});\n")
+                    f.write(f"        Bit<{w_res}> result = {cpp_expr};\n")
+                else: # Unary
+                    f.write(f"        Bit<{w_res}> result = {cpp_expr};\n")
+
                 f.write(f'        std::cout << "Test: {line.strip()} -> Result: " << result.to_string() << std::endl;\n')
                 f.write("    }\n")
-
             except (ValueError, KeyError) as e:
-                print(f"Skipping malformed line in test_vectors.txt: {line.strip()} -> {e}")
+                print(f"Skipping malformed line: {line.strip()} -> {e}")
 
         f.write('    return 0;\n}\n')
 
+# Main execution logic
 if __name__ == "__main__":
     try:
         with open("test_vectors.txt", "r") as f:
