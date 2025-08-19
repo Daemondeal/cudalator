@@ -225,6 +225,57 @@ public:
     }
 
     /**
+     * @brief Less-than comparison operator
+     */
+    template <int M>
+    bool operator<(const Bit<M>& rhs) const {
+        constexpr int lhs_chunks = num_chunks;
+        constexpr int rhs_chunks = (M + 31) / 32;
+        constexpr int max_chunks =
+            (lhs_chunks > rhs_chunks) ? lhs_chunks : rhs_chunks;
+
+        // comparison starting from the msb chunk
+        for (int i = max_chunks - 1; i >= 0; --i) {
+            // missing chunks in shorter numbers = zero
+            uint32_t lhs_chunk = (i < lhs_chunks) ? chunks[i] : 0;
+            uint32_t rhs_chunk = (i < rhs_chunks) ? rhs.chunks[i] : 0;
+
+            if (lhs_chunk < rhs_chunk) {
+                return true;
+            }
+            if (lhs_chunk > rhs_chunk) {
+                return false;
+            }
+        }
+        // all chunks =
+        return false;
+    }
+
+    /**
+     * @brief Greater-than comparison operator
+     */
+    template <int M>
+    bool operator>(const Bit<M>& rhs) const {
+        return rhs < *this;
+    }
+
+    /**
+     * @brief Less-than-or-equal-to comparison operator
+     */
+    template <int M>
+    bool operator<=(const Bit<M>& rhs) const {
+        return !(*this > rhs);
+    }
+
+    /**
+     * @brief greater-than-or-equal-to comparison operator
+     */
+    template <int M>
+    bool operator>=(const Bit<M>& rhs) const {
+        return !(*this < rhs);
+    }
+
+    /**
      * @brief Converts the Bit vector to a hexadecimal string.
      * Mimics the behavior of Verilog's '$display("%h", ...)' for comparison.
      * @return A std::string containing the hexadecimal representation.
