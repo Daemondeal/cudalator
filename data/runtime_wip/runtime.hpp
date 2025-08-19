@@ -402,6 +402,30 @@ public:
         return Bit<1>(1);
     }
 
+    /**
+     * @brief Bitwise AND operator.
+     * The result width is the same as the wider of the two operands.
+     */
+    template <int M>
+    auto operator&(const Bit<M>& rhs) const -> Bit<max(N, M)> {
+        constexpr int RESULT_BITS = max(N, M);
+        Bit<RESULT_BITS> result;
+
+        constexpr int rhs_chunks = (M + 31) / 32;
+        constexpr int result_chunks = (RESULT_BITS + 31) / 32;
+
+        for (int i = 0; i < result_chunks; ++i) {
+            // Treat missing chunks in shorter numbers as zero for the AND
+            // operation.
+            uint32_t lhs_chunk = (i < num_chunks) ? chunks[i] : 0;
+            uint32_t rhs_chunk = (i < rhs_chunks) ? rhs.chunks[i] : 0;
+            result.chunks[i] = lhs_chunk & rhs_chunk;
+        }
+
+        result.apply_mask();
+        return result;
+    }
+
     explicit operator uint64_t() const {
         uint64_t value = 0;
         if (num_chunks > 0) {

@@ -15,6 +15,7 @@ OP_MAP = {
     "LNOT":   {"type": "unary",  "verilog": "!a",    "cpp": "!a"},
     "DIV": {"type": "binary", "verilog": "a / b", "cpp": "a / b"},
     "MOD": {"type": "binary", "verilog": "a % b", "cpp": "a % b"},
+    "AND": {"type": "binary", "verilog": "a & b","cpp": "a & b"},
 }
 
 def format_verilog_value(value, width):
