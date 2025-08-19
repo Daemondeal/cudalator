@@ -387,24 +387,22 @@ public:
     }
 
     /**
-     * @brief Logical NOT operator.
-     * Returns Bit<1>(1) if the entire vector is zero, Bit<1>(0) otherwise.
+     * @brief Logical NOT operator
+     * Returns Bit<1>(1) if the entire vector is zero, Bit<1>(0) otherwise
      */
     Bit<1> operator!() const {
-        // Check if any bit in any chunk is non-zero.
+        // Checking if any bit in any chunk is non-zero
         for (int i = 0; i < num_chunks; ++i) {
             if (chunks[i] != 0) {
-                return Bit<1>(
-                    0); // Vector is not zero, so logical NOT is false.
+                return Bit<1>(0); // Vector is not zero, so logical NOT is false
             }
         }
-        // If all chunks are zero, logical NOT is true.
+        // If all chunks are zero, logical NOT is true
         return Bit<1>(1);
     }
 
     /**
-     * @brief Bitwise AND operator.
-     * The result width is the same as the wider of the two operands.
+     * @brief Bitwise AND operator
      */
     template <int M>
     auto operator&(const Bit<M>& rhs) const -> Bit<max(N, M)> {
@@ -416,7 +414,7 @@ public:
 
         for (int i = 0; i < result_chunks; ++i) {
             // Treat missing chunks in shorter numbers as zero for the AND
-            // operation.
+            // operation
             uint32_t lhs_chunk = (i < num_chunks) ? chunks[i] : 0;
             uint32_t rhs_chunk = (i < rhs_chunks) ? rhs.chunks[i] : 0;
             result.chunks[i] = lhs_chunk & rhs_chunk;
@@ -427,8 +425,7 @@ public:
     }
 
     /**
-     * @brief Bitwise OR operator.
-     * The result width is the same as the wider of the two operands.
+     * @brief Bitwise OR operator
      */
     template <int M>
     auto operator|(const Bit<M>& rhs) const -> Bit<max(N, M)> {
@@ -440,10 +437,33 @@ public:
 
         for (int i = 0; i < result_chunks; ++i) {
             // Treat missing chunks in shorter numbers as zero for the OR
-            // operation.
+            // operation
             uint32_t lhs_chunk = (i < num_chunks) ? chunks[i] : 0;
             uint32_t rhs_chunk = (i < rhs_chunks) ? rhs.chunks[i] : 0;
             result.chunks[i] = lhs_chunk | rhs_chunk;
+        }
+
+        result.apply_mask();
+        return result;
+    }
+
+    /**
+     * @brief Bitwise XOR operator
+     */
+    template <int M>
+    auto operator^(const Bit<M>& rhs) const -> Bit<max(N, M)> {
+        constexpr int RESULT_BITS = max(N, M);
+        Bit<RESULT_BITS> result;
+
+        constexpr int rhs_chunks = (M + 31) / 32;
+        constexpr int result_chunks = (RESULT_BITS + 31) / 32;
+
+        for (int i = 0; i < result_chunks; ++i) {
+            // Treat missing chunks in shorter numbers as zero for the XOR
+            // operation
+            uint32_t lhs_chunk = (i < num_chunks) ? chunks[i] : 0;
+            uint32_t rhs_chunk = (i < rhs_chunks) ? rhs.chunks[i] : 0;
+            result.chunks[i] = lhs_chunk ^ rhs_chunk;
         }
 
         result.apply_mask();

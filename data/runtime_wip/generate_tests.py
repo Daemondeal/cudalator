@@ -17,6 +17,7 @@ OP_MAP = {
     "MOD": {"type": "binary", "verilog": "a % b", "cpp": "a % b"},
     "AND": {"type": "binary", "verilog": "a & b","cpp": "a & b"},
     "OR": {"type": "binary", "verilog": "a | b", "cpp": "a | b"},
+    "XOR": {"type": "binary", "verilog": "a ^ b", "cpp": "a ^ b"},
 }
 
 def format_verilog_value(value, width):
