@@ -508,6 +508,64 @@ public:
         return result;
     }
 
+    /**
+     * @brief Performs a reduction AND on the vector
+     * @return Bit<1>(1) if all bits are 1, Bit<1>(0) otherwise
+     */
+    Bit<1> reduce_and() const {
+        // Create a temporary vector with all bits set to 1
+        Bit<N> all_ones;
+        all_ones.chunks.fill(0xFFFFFFFF);
+        all_ones.apply_mask(); // mask it to the correct width N
+
+        // The reduction AND is 1 sse the number is equal to all ones.
+        return (*this == all_ones);
+    }
+
+    /**
+     * @brief Performs a reduction OR on the vector.
+     * @return Bit<1>(1) if any bit is 1, Bit<1>(0) otherwise.
+     */
+    Bit<1> reduce_or() const {
+        // The reduction OR is 1 if the number is non-zero.
+        return Bit<1>(static_cast<bool>(*this));
+    }
+
+    /**
+     * @brief Performs a reduction XOR on the vector
+     * @return Bit<1>(1) if there is an odd number of set bits, Bit<1>(0)
+     * otherwise.
+     */
+    Bit<1> reduce_xor() const {
+        int total_set_bits = 0;
+        for (int i = 0; i < num_chunks; ++i) {
+            uint32_t chunk = chunks[i];
+            // there is the __popcount intrisic for clang
+            // TODO: search for the gpu equivalent
+            while (chunk > 0) {
+                chunk &= (chunk - 1);
+                total_set_bits++;
+            }
+        }
+        // result is 1 if the total number of set bits is odd
+        return Bit<1>(total_set_bits % 2);
+    }
+
+    /**
+     * @brief Performs a reduction NAND on the vector
+     */
+    Bit<1> reduce_nand() const { return !this->reduce_and(); }
+
+    /**
+     * @brief Performs a reduction NOR on the vector
+     */
+    Bit<1> reduce_nor() const { return !this->reduce_or(); }
+
+    /**
+     * @brief Performs a reduction XNOR on the vector
+     */
+    Bit<1> reduce_xnor() const { return !this->reduce_xor(); }
+
     explicit operator uint64_t() const {
         uint64_t value = 0;
         if (num_chunks > 0) {

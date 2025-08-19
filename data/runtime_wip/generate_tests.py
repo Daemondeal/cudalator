@@ -23,6 +23,13 @@ OP_MAP = {
     "LAND": {"type": "binary", "verilog": "a && b","cpp": "a && b"},
     "LOR": {"type": "binary","verilog": "a || b","cpp": "a || b"},
     "BNOT":   {"type": "unary",  "verilog": "~a",    "cpp": "~a"},
+    # Reduction Operators
+    "RAND":  {"type": "unary", "verilog": "&a", "cpp": "a.reduce_and()"},
+    "RNAND": {"type": "unary", "verilog": "~&a","cpp": "a.reduce_nand()"},
+    "ROR":   {"type": "unary", "verilog": "|a", "cpp": "a.reduce_or()"},
+    "RNOR":  {"type": "unary", "verilog": "~|a","cpp": "a.reduce_nor()"},
+    "RXOR":  {"type": "unary", "verilog": "^a", "cpp": "a.reduce_xor()"},
+    "RXNOR": {"type": "unary", "verilog": "~^a","cpp": "a.reduce_xnor()"},
 }
 
 def format_verilog_value(value, width):
