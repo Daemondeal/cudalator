@@ -1,3 +1,6 @@
+#ifndef RUNTIME_HPP
+#define RUNTIME_HPP
+
 #include <algorithm> // For std::max
 #include <array>
 #include <cstdint>
@@ -110,6 +113,34 @@ public:
     Bit& operator=(T value) {
         set_value(value);
         return *this;
+    }
+
+    /**
+     * @brief Equality comparison operator.
+     */
+    template <int M>
+    Bit<1> operator==(const Bit<M>& rhs) const {
+        constexpr int lhs_chunks = num_chunks;
+        constexpr int rhs_chunks = (M + 31) / 32;
+        constexpr int max_chunks =
+            (lhs_chunks > rhs_chunks) ? lhs_chunks : rhs_chunks;
+
+        for (int i = 0; i < max_chunks; ++i) {
+            uint32_t lhs_chunk = (i < lhs_chunks) ? chunks[i] : 0;
+            uint32_t rhs_chunk = (i < rhs_chunks) ? rhs.chunks[i] : 0;
+            if (lhs_chunk != rhs_chunk) {
+                return Bit<1>(0);
+            }
+        }
+        return Bit<1>(1); // all chunks were identical, return true
+    }
+
+    /**
+     * @brief Inequality comparison operator
+     */
+    template <int M>
+    Bit<1> operator!=(const Bit<M>& rhs) const {
+        return !(*this == rhs);
     }
 
     /**
@@ -385,6 +416,96 @@ public:
     }
 
     /**
+     * @brief Explicit conversion to bool
+     * Allows a Bit object to be used in a boolean context (e.g., if
+     * statements). Returns true if the vector is non-zero, false otherwise
+     */
+    explicit operator bool() const {
+        for (int i = 0; i < num_chunks; ++i) {
+            if (chunks[i] != 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * @brief Division operator.
+     * The result width is the same as the WIDER of the two operands.
+     */
+    template <int M>
+    auto operator/(const Bit<M>& divisor) const -> Bit<max(N, M)> {
+        constexpr int RESULT_BITS = max(N, M);
+        // Division by zero is undefined. In Verilog, it results in all 'X's.
+        // Since we don't have an 'X' state, i'm choosing to return all ones but
+        // you can change this
+        // TODO: confrontati
+        if (divisor == Bit<M>(0)) {
+            Bit<RESULT_BITS> all_ones;
+            all_ones.chunks.fill(0xFFFFFFFF);
+            all_ones.apply_mask();
+            return all_ones;
+        }
+
+        // The dividend must be promoted to the result width for the algorithm
+        // to work correctly.
+        const Bit<RESULT_BITS> dividend(*this);
+        Bit<RESULT_BITS> quotient;
+        Bit<RESULT_BITS> remainder;
+
+        // iterate from the most significant bit to the least significant bit.
+        for (int i = RESULT_BITS - 1; i >= 0; --i) {
+            // 1. shift the remainder left by 1.
+            remainder = remainder << 1;
+            // 2. "bring down" the next bit from the dividend and set it as the
+            // LSB of the remainder. Check if the i-th bit of the dividend is 1
+            if ((dividend.chunks[i / 32] >> (i % 32)) & 1) {
+                remainder.chunks[0] |= 1;
+            }
+            // 3. If the remainder is now greater than or equal to the divisor,
+            // we can subtract.
+            if (remainder >= divisor) {
+                remainder = remainder - divisor;
+                // set the corresponding bit in the quotient to 1
+                quotient.chunks[i / 32] |= (1U << (i % 32));
+            }
+        }
+        quotient.apply_mask();
+        return quotient;
+    }
+
+    /**
+     * @brief Modulo operator.
+     * The result width is the same as the DIVISOR (rhs).
+     */
+    template <int M>
+    auto operator%(const Bit<M>& divisor) const -> Bit<M> {
+        if (divisor == Bit<M>(0)) {
+            Bit<M> all_ones;
+            all_ones.chunks.fill(0xFFFFFFFF);
+            all_ones.apply_mask();
+            return all_ones;
+        }
+
+        // i'm reusing the division logic to find the remainder.
+        Bit<max(N, M)> dividend(*this);
+        Bit<max(N, M)> remainder;
+
+        for (int i = max(N, M) - 1; i >= 0; --i) {
+            remainder = remainder << 1;
+            if ((dividend.chunks[i / 32] >> (i % 32)) & 1) {
+                remainder.chunks[0] |= 1;
+            }
+            if (remainder >= divisor) {
+                remainder = remainder - divisor;
+            }
+        }
+
+        // The final remainder is cast to the width of the divisor.
+        return Bit<M>(remainder);
+    }
+
+    /**
      * @brief Converts the Bit vector to a hexadecimal string.
      * Mimics the behavior of Verilog's '$display("%h", ...)' for comparison.
      * @return A std::string containing the hexadecimal representation.
@@ -549,3 +670,5 @@ private:
     // ============ Data storage ============
     std::array<uint32_t, num_chunks> chunks{};
 };
+
+#endif // RUNTIME_HPP

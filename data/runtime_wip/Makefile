@@ -7,7 +7,7 @@ all: test
 
 test: verilog_results.txt cpp_results.txt
 	@echo "--- Comparing Verilog (Golden) vs. C++ (DUT) ---"
-	@diff -u verilog_results.txt cpp_results.txt && echo "All tests passed!" || (echo "Tests failed! Differences found." && exit 1)
+	@python3 generate_tests.py --compare
 
 verbose_test: verilog_results.txt cpp_results.txt
 	@echo "--- Verbose Comparison ---"
