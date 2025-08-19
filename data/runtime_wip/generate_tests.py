@@ -9,7 +9,11 @@ OP_MAP = {
     "SUB": {
         "verilog": "a - b",
         "cpp": "a - b"
-    }
+    },
+    "MUL": {
+        "verilog": "a * b",
+        "cpp": "a * b"
+    },
 }
 
 def format_verilog_value(value, width):

@@ -183,6 +183,48 @@ public:
     }
 
     /**
+     * @brief Multiplication operator.
+     * The result width is N + M, capped at 128 bits to avoid violating
+     * the class assertion. Any overflow beyond 128 bits is discarded.
+     */
+    template <int M>
+    auto operator*(const Bit<M>& rhs) const
+        -> Bit<(N + M > 128) ? 128 : (N + M)> {
+        constexpr int IDEAL_BITS = N + M;
+        constexpr int RESULT_BITS = (IDEAL_BITS > 128) ? 128 : IDEAL_BITS;
+
+        // zero initialized
+        Bit<RESULT_BITS> result;
+
+        constexpr int rhs_chunks = (M + 31) / 32;
+
+        // multiplication chunk by chunk
+        for (int j = 0; j < rhs_chunks; ++j) {
+            uint64_t carry = 0;
+            for (int i = 0; i < num_chunks; ++i) {
+                // BOUNDS CHECK: Only proceed if the result chunk is within our
+                // capped Bit object
+                if (i + j < result.num_chunks) {
+                    uint64_t product =
+                        static_cast<uint64_t>(chunks[i]) * rhs.chunks[j];
+                    uint64_t sum = static_cast<uint64_t>(result.chunks[i + j]) +
+                                   product + carry;
+
+                    result.chunks[i + j] = static_cast<uint32_t>(sum);
+                    carry = sum >> 32;
+                }
+            }
+            // propagating the final carry if it fits in the result
+            if (j + num_chunks < result.num_chunks) {
+                result.chunks[j + num_chunks] += static_cast<uint32_t>(carry);
+            }
+        }
+
+        result.apply_mask();
+        return result;
+    }
+
+    /**
      * @brief Converts the Bit vector to a hexadecimal string.
      * Mimics the behavior of Verilog's '$display("%h", ...)' for comparison.
      * @return A std::string containing the hexadecimal representation.
