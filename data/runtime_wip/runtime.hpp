@@ -1,8 +1,8 @@
 #include <array>
 #include <cstdint>
-#include <iomanip> // For std::hex, std::setw, std::setfill
+#include <iomanip> // for std::hex, std::setw, std::setfill
 #include <limits>
-#include <sstream> // For std::stringstream
+#include <sstream> // for std::stringstream
 #include <string>
 
 /**
@@ -63,6 +63,23 @@ public:
      * @brief Constructor from a hexadecimal string literal
      */
     explicit Bit(const char* hex_string) { parse_hex_string(hex_string); }
+
+    /**
+     * @brief Converting constructor from another Bit vector
+     * This allows initialization from a Bit vectorof a different width, like
+     * Bit<8> result = Bit<9>(...)
+     */
+    template <int M>
+    Bit(const Bit<M>& rhs) {
+        chunks.fill(0);
+        constexpr int rhs_chunks = (M + 31) / 32;
+        constexpr int chunks_to_copy =
+            num_chunks < rhs_chunks ? num_chunks : rhs_chunks;
+        for (int i = 0; i < chunks_to_copy; ++i) {
+            chunks[i] = rhs.chunks[i];
+        }
+        apply_mask();
+    }
 
     /**
      * @brief Assignment from another Bit vector.
@@ -252,10 +269,14 @@ private:
     void set_value(T value) {
         static_assert(std::is_integral_v<T>,
                       "Input value must be an integral type.");
+
+        // cast of the input to 64 to make the shift safe
+        uint64_t temp_val = value;
+
         chunks.fill(0);
-        for (int i = 0; i < num_chunks && value != 0; ++i) {
-            chunks[i] = static_cast<uint32_t>(value);
-            value >>= 32;
+        for (int i = 0; i < num_chunks && temp_val != 0; ++i) {
+            chunks[i] = static_cast<uint32_t>(temp_val);
+            temp_val >>= 32;
         }
         apply_mask();
     }
