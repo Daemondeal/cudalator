@@ -1,6 +1,8 @@
 #include <array>
 #include <cstdint>
+#include <iomanip> // For std::hex, std::setw, std::setfill
 #include <limits>
+#include <sstream> // For std::stringstream
 #include <string>
 
 /**
@@ -27,6 +29,8 @@
 template <int N>
 class Bit {
     static_assert(N > 0 && N <= 128, "The maximum supported bit width is 128");
+
+    static constexpr int max(int a, int b) { return a > b ? a : b; }
 
     template <int M>
     friend class Bit;
@@ -56,17 +60,84 @@ public:
     Bit(std::initializer_list<uint32_t> init) { copy_from_init(init); }
 
     /**
-     * @brief Constructor from a hexadecimal string literal..
+     * @brief Constructor from a hexadecimal string literal
      */
     explicit Bit(const char* hex_string) { parse_hex_string(hex_string); }
+
+    /**
+     * @brief Assignment from another Bit vector.
+     * Handles assignment from both same-sized and different-sized Bit vectors.
+     * Truncates if the source is larger, zero-extends if it is smaller.
+     */
+    template <int M>
+    Bit& operator=(const Bit<M>& rhs) {
+        // Clear old data since we don't need it anymore
+        chunks.fill(0);
+
+        // computing the smaller of the two chunk counts
+        constexpr int rhs_chunks = (M + 31) / 32;
+        constexpr int chunks_to_copy =
+            num_chunks < rhs_chunks ? num_chunks : rhs_chunks;
+
+        for (int i = 0; i < chunks_to_copy; ++i) {
+            chunks[i] = rhs.chunks[i];
+        }
+
+        apply_mask();
+        // returning a reference to this object to allow chaining like a = b = c
+        return *this;
+    }
+
+    /**
+     * @brief Assignment from a single integral value.
+     */
+    template <typename T, typename = std::enable_if_t<std::is_integral_v<T>>>
+    Bit& operator=(T value) {
+        set_value(value);
+        return *this;
+    }
+
+    /**
+     * @brief Addition operator.
+     * Adds two Bit vectors, returning a new vector with the result.
+     * The result is one bit wider to accommodate a carry-out, UNLESS
+     * that would exceed the 128-bit limit, in which case the carry is
+     * discarded.
+     */
+    template <int M>
+    auto operator+(const Bit<M>& rhs) const {
+        // computing the result width
+        constexpr int WIDER_BITS = max(N, M);
+        constexpr int RESULT_BITS = (WIDER_BITS < 128) ? (WIDER_BITS + 1) : 128;
+
+        Bit<RESULT_BITS> result;
+
+        constexpr int rhs_chunks = (M + 31) / 32;
+        constexpr int result_chunks = (RESULT_BITS + 31) / 32;
+
+        uint64_t carry = 0;
+        // Looping through the maximum number of chunks needed for the result
+        for (int i = 0; i < result_chunks; ++i) {
+            uint64_t lhs_val = (i < num_chunks) ? chunks[i] : 0;
+            uint64_t rhs_val = (i < rhs_chunks) ? rhs.chunks[i] : 0;
+            uint64_t sum = lhs_val + rhs_val + carry;
+            // the lower 32 bits of the sum are the chunk for our result
+            result.chunks[i] = static_cast<uint32_t>(sum);
+            // right shift to get the eventual carry bit
+            carry = sum >> 32;
+        }
+
+        result.apply_mask();
+        return result;
+    }
 
 private:
     /**
      * ============ Private helper functions ============
      */
     // constructors, assignments or arithmetic operators MUST call
-    // apply_mask() before they finish to clean up the result to preserve the
-    // class invariant
+    // apply_mask() before they finish to clean up the result to
+    // preserve the class invariant
     void apply_mask() {
         for (int i = 0; i < num_chunks; ++i)
             chunks[i] &= mask[i];
@@ -76,8 +147,8 @@ private:
     void copy_from_init(std::initializer_list<uint32_t> init) {
         chunks.fill(0);
         int i = 0;
-        // Copy values from the list, ensuring we don't overflow our chunks
-        // array
+        // Copy values from the list, ensuring we don't overflow our
+        // chunks array
         for (uint32_t val : init) {
             if (i >= num_chunks) {
                 break;
@@ -126,11 +197,13 @@ private:
             chunks[chunk_idx] |= (val << bits_in_chunk);
             bits_in_chunk += 4;
 
-            // If the current chunk is full (32 bits), move to the next one
+            // If the current chunk is full (32 bits), move to the next
+            // one
             if (bits_in_chunk == 32) {
                 chunk_idx++;
                 bits_in_chunk = 0;
-                // Stop if we have filled all the chunks our Bit<N> can hold
+                // Stop if we have filled all the chunks our Bit<N> can
+                // hold
                 if (chunk_idx >= num_chunks) {
                     break;
                 }
@@ -160,8 +233,8 @@ private:
     // Number of chunks for the bit vector storage
     static constexpr int num_chunks = (N + 31) / 32;
 
-    // The mask computation is static since the mask is shared by all the
-    // objects with the same Bit<N> width
+    // The mask computation is static since the mask is shared by all
+    // the objects with the same Bit<N> width
     static constexpr std::array<uint32_t, num_chunks> compute_mask() {
         // result accumulator
         std::array<uint32_t, num_chunks> mask{};
@@ -169,9 +242,10 @@ private:
         for (int i = 0; i < num_chunks; ++i) {
             // msb chunk discriminator
             if (i == num_chunks - 1 && N % 32 != 0) {
-                // N % 32 returns how many bits are used in the final chunk
-                // 1U << n_bits moves a 1 left by n_bits, then by doing -1
-                // we flip all the bits to the rhs and obtain the mask
+                // N % 32 returns how many bits are used in the final
+                // chunk 1U << n_bits moves a 1 left by n_bits, then by
+                // doing -1 we flip all the bits to the rhs and obtain
+                // the mask
                 mask[i] = (1U << (N % 32)) - 1;
             } else {
                 // full chunk case
