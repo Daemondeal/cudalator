@@ -21,6 +21,7 @@ OP_MAP = {
     "EQ": {"type": "binary", "verilog": "a == b", "cpp": "a == b"},
     "NEQ": {"type": "binary", "verilog": "a != b","cpp": "a != b"},
     "LAND": {"type": "binary", "verilog": "a && b","cpp": "a && b"},
+    "LOR": {"type": "binary","verilog": "a || b","cpp": "a || b"},
 }
 
 def format_verilog_value(value, width):
