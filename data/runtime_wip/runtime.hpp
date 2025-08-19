@@ -122,11 +122,10 @@ public:
      * discarded.
      */
     template <int M>
-    auto operator+(const Bit<M>& rhs) const {
+    auto operator+(const Bit<M>& rhs) const
+        -> Bit<max(N, M) < 128 ? max(N, M) + 1 : 128> {
         // computing the result width
-        constexpr int WIDER_BITS = max(N, M);
-        constexpr int RESULT_BITS = (WIDER_BITS < 128) ? (WIDER_BITS + 1) : 128;
-
+        constexpr int RESULT_BITS = (max(N, M) < 128) ? (max(N, M) + 1) : 128;
         Bit<RESULT_BITS> result;
 
         constexpr int rhs_chunks = (M + 31) / 32;
@@ -142,6 +141,41 @@ public:
             result.chunks[i] = static_cast<uint32_t>(sum);
             // right shift to get the eventual carry bit
             carry = sum >> 32;
+        }
+        result.apply_mask();
+        return result;
+    }
+
+    /**
+     * @brief Subtraction operator.
+     * Subtracts two Bit vectors, returning a new vector with the result.
+     * The result width is the same as the wider of the two operands.
+     */
+    template <int M>
+    auto operator-(const Bit<M>& rhs) const -> Bit<max(N, M)> {
+        constexpr int RESULT_BITS = max(N, M);
+        Bit<RESULT_BITS> result;
+
+        constexpr int rhs_chunks = (M + 31) / 32;
+        constexpr int result_chunks = (RESULT_BITS + 31) / 32;
+
+        uint64_t borrow = 0;
+
+        for (int i = 0; i < result_chunks; ++i) {
+            uint64_t lhs_val = (i < num_chunks) ? chunks[i] : 0;
+            uint64_t rhs_val = (i < rhs_chunks) ? rhs.chunks[i] : 0;
+
+            // compute the subtraction including the borrow
+            uint64_t diff = lhs_val - rhs_val - borrow;
+
+            // lower 32 bits = result for this chunk
+            result.chunks[i] = static_cast<uint32_t>(diff);
+
+            // compute the borrow for the next iteration.
+            // a borrow is needed if the subtraction underflowed & this happens
+            // if the subtrahend (rhs_val + borrow) was larger than the minuend
+            // (lhs_val).
+            borrow = (lhs_val < rhs_val + borrow) ? 1 : 0;
         }
 
         result.apply_mask();
