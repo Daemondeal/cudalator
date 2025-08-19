@@ -15,8 +15,8 @@ verbose_test: verilog_results.txt cpp_results.txt
 	@cat verilog_results.txt
 	@echo "\n--- C++ Output (DUT): ---"
 	@cat cpp_results.txt
-	@echo "\n--- Diff (empty if tests pass): ---"
-	@diff -u verilog_results.txt cpp_results.txt || true
+	@echo "\n--- Final Verdict: ---"
+	@python3 generate_tests.py --compare
 
 verilog_results.txt: tb
 	@echo "--- Running Verilog Simulation ---"

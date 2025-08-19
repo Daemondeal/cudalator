@@ -16,6 +16,7 @@ OP_MAP = {
     "DIV": {"type": "binary", "verilog": "a / b", "cpp": "a / b"},
     "MOD": {"type": "binary", "verilog": "a % b", "cpp": "a % b"},
     "AND": {"type": "binary", "verilog": "a & b","cpp": "a & b"},
+    "OR": {"type": "binary", "verilog": "a | b", "cpp": "a | b"},
 }
 
 def format_verilog_value(value, width):
@@ -153,7 +154,7 @@ def compare_results():
             print(f"   Result (C++):     {cpp_res}")
 
     if errors == 0:
-        print("✅ All tests passed!")
+        print("All tests passed!")
     else:
         print(f"\nFound {errors} mismatch(es).")
         sys.exit(1)
@@ -168,8 +169,8 @@ if __name__ == "__main__":
                 lines = f.readlines()
             generate_verilog(lines)
             generate_cpp(lines)
-            print("✅ Successfully generated testbench.v and test_runner.cpp")
+            print("Successfully generated testbench.v and test_runner.cpp")
         except FileNotFoundError:
-            print("❌ Error: test_vectors.txt not found. Please create it.")
+            print("Error: test_vectors.txt not found. Please create it.")
         except Exception as e:
-            print(f"❌ An error occurred: {e}")
+            print(f"An error occurred: {e}")
