@@ -496,6 +496,18 @@ public:
         return Bit<1>(lhs_is_true || rhs_is_true);
     }
 
+    /**
+     * @brief Unary bitwise NOT operator
+     */
+    Bit<N> operator~() const {
+        Bit<N> result;
+        for (int i = 0; i < num_chunks; ++i) {
+            result.chunks[i] = ~chunks[i];
+        }
+        result.apply_mask();
+        return result;
+    }
+
     explicit operator uint64_t() const {
         uint64_t value = 0;
         if (num_chunks > 0) {
