@@ -131,6 +131,39 @@ public:
         return result;
     }
 
+    /**
+     * @brief Converts the Bit vector to a hexadecimal string.
+     * Mimics the behavior of Verilog's '$display("%h", ...)' for comparison.
+     * @return A std::string containing the hexadecimal representation.
+     */
+    std::string to_string() const {
+        std::stringstream ss;
+        ss << std::hex; // setting the stream to output in hexadecimal format
+
+        // We can start by handling the most significant chunk first, as it may
+        // not be a full 8 hex characters
+        int msb_chunk_idx = num_chunks - 1;
+
+        // computing how many bits are in the last chunk
+        int bits_in_msb = (N % 32 == 0) ? 32 : (N % 32);
+
+        // computing the number of hex characters needed for those bits
+        int hex_chars_in_msb = (bits_in_msb + 3) / 4;
+
+        // printing the most significant chunk with the calculated width
+        ss << std::setw(hex_chars_in_msb) << std::setfill('0')
+           << chunks[msb_chunk_idx];
+
+        // printing the rest of the chunks (if any) from most to least
+        // significant
+        for (int i = msb_chunk_idx - 1; i >= 0; --i) {
+            // all lower chunks are full, so they are 8 hex characters (32 bits)
+            ss << std::setw(8) << std::setfill('0') << chunks[i];
+        }
+
+        return ss.str();
+    }
+
 private:
     /**
      * ============ Private helper functions ============
