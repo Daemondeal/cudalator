@@ -13,18 +13,19 @@
 
 /**
  * (operators), (name), (implemented)
- * (=), (Binary assignment operator), ()
- * (+= -= *= /= %=), (Binary arithmetic assignment operators), ()
- * (&= |= ^=), (Binary bitwise assignment operators), ()
- * (<<= >>=), (Binary logical shift assignment operators), ()
- * (<<<= >>>=), (Binary arithmetic shift assignment operators), ()
+ * (=), (Binary assignment operator), (yes)
+ * (+= -= *= /= %=), (Binary arithmetic assignment operators), (yes)
+ * (&= |= ^=), (Binary bitwise assignment operators), (yes)
+ * (<<= >>=), (Binary logical shift assignment operators), (yes)
+ * (<<<= >>>=), (Binary arithmetic shift assignment operators), (no but i'm
+ * supporting only unsigned ops)
  * (?:), (Conditional operator), ()
  * (+ -), (Unary arithmetic operators), ()
- * (~), (Unary bitwise negation operator), ()
- * (!), (Unary logical negation operator), ()
- * (& ~& | ~| ^ ~^), (Unary reduction operators), ()
- * (+ - * /), (Binary arithmetic operators), ()
- * (%), (Binary arithmetic modulus operator), ()
+ * (~), (Unary bitwise negation operator), (yes)
+ * (!), (Unary logical negation operator), (yes)
+ * (& ~& | ~| ^ ~^), (Unary reduction operators), (yes)
+ * (+ - * /), (Binary arithmetic operators), (yes)
+ * (%), (Binary arithmetic modulus operator), (yes)
  * (& | ^ ^~ ~^), (Binary bitwise operators), ()
  * (>> <<), (Binary logical shift operators), ()
  * (>>> <<<), (Binary arithmetic shift operators), ()
@@ -514,6 +515,14 @@ public:
         }
         result.apply_mask();
         return result;
+    }
+
+    /**
+     * @brief Bitwise XNOR operator function
+     */
+    template <int M>
+    auto xnor(const Bit<M>& rhs) const -> Bit<max(N, M)> {
+        return ~(*this ^ rhs);
     }
 
     /**
