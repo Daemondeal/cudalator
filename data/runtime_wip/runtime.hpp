@@ -26,12 +26,16 @@
  * (& ~& | ~| ^ ~^), (Unary reduction operators), (yes)
  * (+ - * /), (Binary arithmetic operators), (yes)
  * (%), (Binary arithmetic modulus operator), (yes)
- * (& | ^ ^~ ~^), (Binary bitwise operators), ()
- * (>> <<), (Binary logical shift operators), ()
- * (>>> <<<), (Binary arithmetic shift operators), ()
- * (&& || -> <->), (Binary logical operators), ()
- * (< <= > >=), (Binary relational operators), ()
- * (== !=), (Binary case equality operators), ()
+ * (& | ^ ^~ ~^), (Binary bitwise operators), (yes)
+ * (>> <<), (Binary logical shift operators), (yes)
+ * (>>> <<<), (Binary arithmetic shift operators), (no but again it's only
+ * unsigned)
+ * (&& || -> <->), (Binary logical operators), (yes except logical implication
+ * -that is equal to !expression1 || expression2- and the logical equivalence
+ * -that is equal to (expression1 -> expression2) && (expression2 ->
+ * expression1)-)
+ * (< <= > >=), (Binary relational operators), (yes)
+ * (== !=), (Binary case equality operators), (yes)
  * (=== !== ==? !=?), (Binary logical equality operators), ()
  * (==? !=?), (Binary wildcard equality operators), ()
  * (++ --), (Unary increment, decrement operators), ()
@@ -503,6 +507,27 @@ public:
         bool rhs_is_true = static_cast<bool>(rhs);
 
         return Bit<1>(lhs_is_true || rhs_is_true);
+    }
+    /**
+     * @brief Performs a logical implication (if-then).
+     * Treats the entire vector as a single boolean value.
+     * Logically equivalent to !(*this) || rhs.
+     * @return Bit<1>(1) for true, Bit<1>(0) for false.
+     */
+    template <int M>
+    Bit<1> logical_implication(const Bit<M>& rhs) const {
+        return !(*this) || rhs;
+    }
+
+    /**
+     * @brief Performs a logical equivalence (if-and-only-if).
+     * Treats the entire vector as a single boolean value.
+     * @return Bit<1>(1) for true, Bit<1>(0) for false.
+     */
+    template <int M>
+    Bit<1> logical_equivalence(const Bit<M>& rhs) const {
+        // Implements (A -> B) && (B -> A)
+        return this->logical_implication(rhs) && rhs.logical_implication(*this);
     }
 
     /**

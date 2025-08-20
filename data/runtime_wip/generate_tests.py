@@ -20,6 +20,8 @@ OP_MAP = {
     "OR": {"type": "binary", "verilog": "a | b", "cpp": "a | b"},
     "XOR": {"type": "binary", "verilog": "a ^ b", "cpp": "a ^ b"},
     "XNOR": {"type": "binary", "verilog": "a ~^ b", "cpp": "a.xnor(b)"},
+    "IMPLIES": {"type": "binary", "verilog": "a -> b", "cpp": "a.logical_implication(b)"},
+    "EQUIV":   {"type": "binary", "verilog": "a <-> b", "cpp": "a.logical_equivalence(b)"},
     "EQ": {"type": "binary", "verilog": "a == b", "cpp": "a == b"},
     "NEQ": {"type": "binary", "verilog": "a != b","cpp": "a != b"},
     "LAND": {"type": "binary", "verilog": "a && b","cpp": "a && b"},
