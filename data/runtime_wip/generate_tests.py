@@ -31,6 +31,9 @@ OP_MAP = {
     "RXOR":  {"type": "unary", "verilog": "^a", "cpp": "a.reduce_xor()"},
     "RXNOR": {"type": "unary", "verilog": "~^a","cpp": "a.reduce_xnor()"},
     "ADD_ASGN": {"type": "binary", "verilog": "a += b", "cpp": "a += b"},
+    "SUB_ASGN": {"type": "binary", "verilog": "a -= b", "cpp": "a -= b"},
+    "MUL_ASGN": {"type": "binary", "verilog": "a *= b", "cpp": "a *= b"},
+    "DIV_ASGN": {"type": "binary", "verilog": "a /= b", "cpp": "a /= b"},
 }
 
 def format_verilog_value(value, width):
@@ -85,8 +88,11 @@ def generate_verilog(lines):
                 if op_info["type"] == "binary":
                     b_name = f"b_{i}"
                     f.write(f"    {b_name} = {format_verilog_value(v2, w2)};\n")
-                    if op == "ADD_ASGN":
-                        f.write(f"    {a_name} += {b_name};\n")
+                    if op in ["ADD_ASGN", "SUB_ASGN", "MUL_ASGN", "DIV_ASGN"]:
+                        # Line 1: Perform the in-place SystemVerilog operation
+                        in_place_op = op_info["verilog"].replace("a", a_name).replace("b", b_name)
+                        f.write(f"    {in_place_op};\n")
+                        # Line 2: Assign the final value to the result register for comparison
                         f.write(f"    {res_name} = {a_name};\n")
                     else:
                         f.write(f"    {res_name} = {verilog_expr.replace('a', a_name).replace('b', b_name)};\n")
@@ -144,7 +150,7 @@ def compare_results():
         cpp_res = cline.split(":")[-1].strip()
 
         # Check for the special division-by-zero case
-        is_div_by_zero = re.search(r"\s*(DIV|MOD),\s*\d+,\s*[^,]+,\s*\d+,\s*0\s*,", test_case)
+        is_div_by_zero = re.search(r"\s*(DIV|MOD)(_ASGN)?,\s*\d+,\s*[^,]+,\s*\d+,\s*0\s*,", test_case)
 
         is_match = False
         if is_div_by_zero:
@@ -160,7 +166,7 @@ def compare_results():
 
         if not is_match:
             errors += 1
-            print(f"❌ Mismatch on line {i+1}:")
+            print(f"   Mismatch on line {i+1}:")
             print(f"   Test: {test_case}")
             print(f"   Golden (Verilog): {verilog_res}")
             print(f"   Result (C++):     {cpp_res}")

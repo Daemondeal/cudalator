@@ -575,6 +575,33 @@ public:
         return *this;
     }
 
+    /**
+     * @brief Subtraction assignment operator
+     */
+    template <int M>
+    Bit<N>& operator-=(const Bit<M>& rhs) {
+        *this = *this - rhs;
+        return *this;
+    }
+
+    /**
+     * @brief Multiplication assignment operator
+     */
+    template <int M>
+    Bit<N>& operator*=(const Bit<M>& rhs) {
+        *this = *this * rhs;
+        return *this;
+    }
+
+    /**
+     * @brief Division assignment operator
+     */
+    template <int M>
+    Bit<N>& operator/=(const Bit<M>& rhs) {
+        *this = *this / rhs;
+        return *this;
+    }
+
     explicit operator uint64_t() const {
         uint64_t value = 0;
         if (num_chunks > 0) {
