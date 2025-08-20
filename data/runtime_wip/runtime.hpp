@@ -19,8 +19,8 @@
  * (<<= >>=), (Binary logical shift assignment operators), (yes)
  * (<<<= >>>=), (Binary arithmetic shift assignment operators), (no but i'm
  * supporting only unsigned ops)
- * (?:), (Conditional operator), ()
- * (+ -), (Unary arithmetic operators), ()
+ * (?:), (Conditional operator), (yes)
+ * (+ -), (Unary arithmetic operators), (yes)
  * (~), (Unary bitwise negation operator), (yes)
  * (!), (Unary logical negation operator), (yes)
  * (& ~& | ~| ^ ~^), (Unary reduction operators), (yes)
@@ -38,9 +38,9 @@
  * (==? !=?), (Binary wildcard equality operators), (not applicable without X,Z)
  * (++ --), (Unary increment, decrement operators), (yes)
  * (inside), (Binary set membership operator), ()
- * (dist), (Binary distribution operator), ()
+ * (dist), (Binary distribution operator), (nope, absolutely not)
  * ({} {{}}), (Concatenation, replication operators), ()
- * (<<{} >>{}), (Stream operators), ()
+ * (<<{} >>{}), (Stream operators), (i would like not to implement also these)
  */
 
 template <int N>
@@ -179,6 +179,22 @@ public:
         Bit<N> temp = *this;
         *this -= Bit<1>(1);
         return temp;
+    }
+
+    /**
+     * @brief Mimics the Verilog 'inside' operator to check for set membership
+     * @param value_to_check The value to look for
+     * @param values_in_set A variable number of values that form the set
+     * @return Bit<1>(1) if the value is in the set, Bit<1>(0) otherwise
+     */
+    template <int N_Check, typename... T_Set>
+    static Bit<1> inside(const Bit<N_Check>& value_to_check,
+                         const T_Set&... values_in_set) {
+        bool is_inside = false;
+        // è una fold expression, in teoria solo c++17, potenzialmente da
+        // cambiare OR sul result di ogni equality check
+        ((is_inside = is_inside || (value_to_check == values_in_set)), ...);
+        return Bit<1>(is_inside);
     }
 
     /**
