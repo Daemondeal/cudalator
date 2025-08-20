@@ -20,5 +20,12 @@ int main() {
     std::cout << "Result of b++: " << res_postfix.to_string() << std::endl; // a
     std::cout << "Final b: " << b.to_string() << std::endl;                 // b
 
+    Bit<4> condition{0b0100}; // non-zero, 4-bit condition
+    Bit<8> val_if_true{100};
+    Bit<8> val_if_false{200};
+    Bit<8> result = Bit<8>::conditional(condition, val_if_true, val_if_false);
+
+    std::cout << "Result: " << result.to_string()
+              << std::endl; // in teoria 64 = 0x100
     return 0;
 }

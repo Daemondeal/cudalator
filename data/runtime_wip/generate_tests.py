@@ -43,6 +43,8 @@ OP_MAP = {
     "XOR_ASGN": {"type": "binary", "verilog": "a ^= b", "cpp": "a ^= b"},
     "RSHIFT_ASGN": {"type": "binary", "verilog": "a >>= b", "cpp": "a >>= b"},
     "LSHIFT_ASGN": {"type": "binary", "verilog": "a <<= b", "cpp": "a <<= b"},
+    "UPLUS": {"type": "unary", "verilog": "+a", "cpp": "+a"},
+    "UMINUS": {"type": "unary", "verilog": "-a", "cpp": "-a"},
 }
 
 def format_verilog_value(value, width):

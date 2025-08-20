@@ -36,7 +36,7 @@
  * (=== !== ==? !=?), (Binary logical equality operators), (not applicable
  * without X,Z)
  * (==? !=?), (Binary wildcard equality operators), (not applicable without X,Z)
- * (++ --), (Unary increment, decrement operators), (yes but not tested)
+ * (++ --), (Unary increment, decrement operators), (yes)
  * (inside), (Binary set membership operator), ()
  * (dist), (Binary distribution operator), ()
  * ({} {{}}), (Concatenation, replication operators), ()
@@ -553,6 +553,31 @@ public:
     Bit<1> logical_equivalence(const Bit<M>& rhs) const {
         // Implements (A -> B) && (B -> A)
         return this->logical_implication(rhs) && rhs.logical_implication(*this);
+    }
+
+    /**
+     * @brief Mimics Verilog conditional -ternary operator.
+     */
+    template <int Cond_N, int W1, int W2>
+    static Bit<max(W1, W2)> conditional(const Bit<Cond_N>& cond,
+                                        const Bit<W1>& true_val,
+                                        const Bit<W2>& false_val) {
+        if (static_cast<bool>(cond)) {
+            return true_val;
+        } else {
+            return false_val;
+        }
+    }
+
+    // Unary Plus (+a)
+    Bit<N> operator+() const {
+        return *this; // returns a copy of the object unchanged
+    }
+
+    // Unary Minus (-a)
+    Bit<N> operator-() const {
+        // 2s complement is (~a + 1)
+        return ~(*this) + Bit<1>(1);
     }
 
     /**
