@@ -12,26 +12,34 @@
 #include <type_traits> // For std::is_integral_v and std::enable_if_t
 
 /**
- * List of operators we must implement:
- * - ASSIGNMENT OPERATORS
- *   =, +=, -=, *=, /=, %=, &=, |=, ^=, <<=, >>=, <<<=, >>>=
- * - CONDITIONAL OPERATORS
- *   cond_predicate ? {attribute_instance} expression : expression
- * - UNARY OPERATORS
- *   +, -, !, ~, &, ~&, |, ~|, ^, ~^, ^~
- * - BINARY OPERATORS
- *   +, -, *, /, %, ==, !=, ===, !==, ==?, !=?, &&, ||. **, <, <=, >, >=, &, |,
- * ^, ^~, ~^, >>, <<. >>>, <<<, ->, <->
- * - INCREMENT OR DECREMENT OPERATORS
- *   ++, --
- * - STREAM OPERATORS
- *   >>, <<
+ * (operators), (name), (implemented)
+ * (=), (Binary assignment operator), ()
+ * (+= -= *= /= %=), (Binary arithmetic assignment operators), ()
+ * (&= |= ^=), (Binary bitwise assignment operators), ()
+ * (<<= >>=), (Binary logical shift assignment operators), ()
+ * (<<<= >>>=), (Binary arithmetic shift assignment operators), ()
+ * (?:), (Conditional operator), ()
+ * (+ -), (Unary arithmetic operators), ()
+ * (~), (Unary bitwise negation operator), ()
+ * (!), (Unary logical negation operator), ()
+ * (& ~& | ~| ^ ~^), (Unary reduction operators), ()
+ * (+ - * /), (Binary arithmetic operators), ()
+ * (%), (Binary arithmetic modulus operator), ()
+ * (& | ^ ^~ ~^), (Binary bitwise operators), ()
+ * (>> <<), (Binary logical shift operators), ()
+ * (>>> <<<), (Binary arithmetic shift operators), ()
+ * (&& || -> <->), (Binary logical operators), ()
+ * (< <= > >=), (Binary relational operators), ()
+ * (== !=), (Binary case equality operators), ()
+ * (=== !== ==? !=?), (Binary logical equality operators), ()
+ * (==? !=?), (Binary wildcard equality operators), ()
+ * (++ --), (Unary increment, decrement operators), ()
+ * (inside), (Binary set membership operator), ()
+ * (dist), (Binary distribution operator), ()
+ * ({} {{}}), (Concatenation, replication operators), ()
+ * (<<{} >>{}), (Stream operators), ()
  */
 
-/**
- * operator bool() fa funzionare il tipo come se fosse un booleano quindi se
- * scrivi if(oggetto) ti restituisce true o false
- */
 template <int N>
 class Bit {
     static_assert(N > 0 && N <= 128, "The maximum supported bit width is 128");
@@ -635,6 +643,24 @@ public:
     template <int M>
     Bit<N>& operator^=(const Bit<M>& rhs) {
         *this = *this ^ rhs;
+        return *this;
+    }
+
+    /**
+     * @brief Logical right shift assignment operator
+     */
+    template <int M>
+    Bit<N>& operator>>=(const Bit<M>& rhs) {
+        *this = *this >> rhs;
+        return *this;
+    }
+
+    /**
+     * @brief Logical left shift assignment operator
+     */
+    template <int M>
+    Bit<N>& operator<<=(const Bit<M>& rhs) {
+        *this = *this << rhs;
         return *this;
     }
 
