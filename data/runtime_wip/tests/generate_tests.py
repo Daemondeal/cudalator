@@ -6,7 +6,6 @@ import os
 # All generated files will be placed in this directory
 BUILD_DIR = "build"
 
-# (Your OP_MAP dictionary remains unchanged here)
 OP_MAP = {
     "ADD":    {"type": "binary", "verilog": "a + b", "cpp": "a + b"},
     "SUB":    {"type": "binary", "verilog": "a - b", "cpp": "a - b"},
@@ -68,7 +67,6 @@ def format_cpp_value(value):
 
 def generate_verilog(lines):
     with open(os.path.join(BUILD_DIR, "testbench.v"), "w") as f:
-        # (The rest of this function is unchanged)
         f.write("`timescale 1ns / 1ps\n")
         f.write("module testbench;\n")
         declarations = set()
@@ -114,11 +112,9 @@ def generate_verilog(lines):
 
 def generate_cpp(lines):
     with open(os.path.join(BUILD_DIR, "test_runner.cpp"), "w") as f:
-        # Note the updated include path for runtime.hpp
         f.write('#include "../../runtime.hpp"\n')
         f.write('#include <iostream>\n\n')
         f.write('int main() {\n')
-        # (The rest of this function is unchanged)
         for line in lines:
             if line.startswith('#') or not line.strip(): continue
             try:
@@ -180,7 +176,6 @@ if __name__ == "__main__":
         compare_results()
     else:
         try:
-            # Create build directory if it doesn't exist
             if not os.path.exists(BUILD_DIR):
                 os.makedirs(BUILD_DIR)
             with open("test_vectors.txt", "r") as f:
