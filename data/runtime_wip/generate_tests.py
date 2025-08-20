@@ -2,7 +2,7 @@
 import sys
 import re
 
-# the "type" is needed to distinguish unary vs. binary ops.
+# the "type" is needed to distinguish unary vs. binary ops
 OP_MAP = {
     "ADD":    {"type": "binary", "verilog": "a + b", "cpp": "a + b"},
     "SUB":    {"type": "binary", "verilog": "a - b", "cpp": "a - b"},
@@ -89,10 +89,10 @@ def generate_verilog(lines):
                     b_name = f"b_{i}"
                     f.write(f"    {b_name} = {format_verilog_value(v2, w2)};\n")
                     if op in ["ADD_ASGN", "SUB_ASGN", "MUL_ASGN", "DIV_ASGN"]:
-                        # Line 1: Perform the in-place SystemVerilog operation
+                        # Perform the in-place SystemVerilog operation
                         in_place_op = op_info["verilog"].replace("a", a_name).replace("b", b_name)
                         f.write(f"    {in_place_op};\n")
-                        # Line 2: Assign the final value to the result register for comparison
+                        # Assign the final value to the result register for comparison
                         f.write(f"    {res_name} = {a_name};\n")
                     else:
                         f.write(f"    {res_name} = {verilog_expr.replace('a', a_name).replace('b', b_name)};\n")
