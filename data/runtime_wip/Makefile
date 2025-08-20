@@ -1,6 +1,7 @@
 CXX = g++
 CXXFLAGS = -std=c++17 -Wall -O2
 IVERILOG = iverilog
+IVERILOG_FLAGS = -g2012
 VVP = vvp
 
 all: test
@@ -28,7 +29,7 @@ cpp_results.txt: runner
 
 tb: testbench.v
 	@echo "--- Compiling Verilog Testbench ---"
-	@$(IVERILOG) -o tb testbench.v
+	@$(IVERILOG) $(IVERILOG_FLAGS) -o tb testbench.v
 
 runner: test_runner.cpp runtime.hpp
 	@echo "--- Compiling C++ Test Runner ---"

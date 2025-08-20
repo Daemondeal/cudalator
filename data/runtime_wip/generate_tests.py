@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 import sys
 import re
-# The "type" is needed to distinguish unary vs. binary ops.
+
+# the "type" is needed to distinguish unary vs. binary ops.
 OP_MAP = {
     "ADD":    {"type": "binary", "verilog": "a + b", "cpp": "a + b"},
     "SUB":    {"type": "binary", "verilog": "a - b", "cpp": "a - b"},
@@ -23,17 +24,16 @@ OP_MAP = {
     "LAND": {"type": "binary", "verilog": "a && b","cpp": "a && b"},
     "LOR": {"type": "binary","verilog": "a || b","cpp": "a || b"},
     "BNOT":   {"type": "unary",  "verilog": "~a",    "cpp": "~a"},
-    # Reduction Operators
     "RAND":  {"type": "unary", "verilog": "&a", "cpp": "a.reduce_and()"},
     "RNAND": {"type": "unary", "verilog": "~&a","cpp": "a.reduce_nand()"},
     "ROR":   {"type": "unary", "verilog": "|a", "cpp": "a.reduce_or()"},
     "RNOR":  {"type": "unary", "verilog": "~|a","cpp": "a.reduce_nor()"},
     "RXOR":  {"type": "unary", "verilog": "^a", "cpp": "a.reduce_xor()"},
     "RXNOR": {"type": "unary", "verilog": "~^a","cpp": "a.reduce_xnor()"},
+    "ADD_ASGN": {"type": "binary", "verilog": "a += b", "cpp": "a += b"},
 }
 
 def format_verilog_value(value, width):
-    """Formats a value string into a correctly sized Verilog literal."""
     value = value.strip().upper().replace("ULL", "")
     if value.startswith("0X"):
         hex_digits = value[2:]
@@ -42,7 +42,6 @@ def format_verilog_value(value, width):
         return f"{width}'d{value}"
 
 def format_cpp_value(value):
-    """Formats a value for C++, wrapping hex strings in quotes."""
     value = value.strip()
     if value.lower().startswith("0x"):
         return f'"{value}"'
@@ -50,7 +49,6 @@ def format_cpp_value(value):
         return value
 
 def generate_verilog(lines):
-    """Generates the Verilog testbench (the 'golden model')."""
     with open("testbench.v", "w") as f:
         f.write("`timescale 1ns / 1ps\n")
         f.write("module testbench;\n")
@@ -87,7 +85,11 @@ def generate_verilog(lines):
                 if op_info["type"] == "binary":
                     b_name = f"b_{i}"
                     f.write(f"    {b_name} = {format_verilog_value(v2, w2)};\n")
-                    f.write(f"    {res_name} = {verilog_expr.replace('a', a_name).replace('b', b_name)};\n")
+                    if op == "ADD_ASGN":
+                        f.write(f"    {a_name} += {b_name};\n")
+                        f.write(f"    {res_name} = {a_name};\n")
+                    else:
+                        f.write(f"    {res_name} = {verilog_expr.replace('a', a_name).replace('b', b_name)};\n")
                 else: # Unary
                     f.write(f"    {res_name} = {verilog_expr.replace('a', a_name)};\n")
 
@@ -99,7 +101,6 @@ def generate_verilog(lines):
         f.write("  end\nendmodule\n")
 
 def generate_cpp(lines):
-    """Generates the C++ test runner for ALL cases."""
     with open("test_runner.cpp", "w") as f:
         f.write('#include "runtime.hpp"\n')
         f.write('#include <iostream>\n\n')
@@ -108,7 +109,6 @@ def generate_cpp(lines):
         for line in lines:
             if line.startswith('#') or not line.strip(): continue
             try:
-                # This logic is now the same for all operators
                 op, w1, v1, w2, v2, w_res = [s.strip() for s in line.split(',')]
                 op_info = OP_MAP[op]
                 cpp_v1 = format_cpp_value(v1)
@@ -132,7 +132,6 @@ def generate_cpp(lines):
         f.write('    return 0;\n}\n')
 
 def compare_results():
-    """Performs an intelligent comparison of the result files."""
     print("--- Comparing Verilog (Golden) vs. C++ (DUT) ---")
     with open("verilog_results.txt", "r") as fv, open("cpp_results.txt", "r") as fc:
         verilog_lines = [line for line in fv if line.strip()]
@@ -149,13 +148,13 @@ def compare_results():
 
         is_match = False
         if is_div_by_zero:
-            # For div/mod by zero, Verilog should be all 'x's and C++ all 'f's.
+            # For div/mod by zero, Verilog should be all 'x's and C++ all 'f's
             is_verilog_x = all(c == 'x' for c in verilog_res)
             is_cpp_f = all(c == 'f' for c in cpp_res)
             if is_verilog_x and is_cpp_f:
                 is_match = True
         else:
-            # For all other cases, they must match exactly.
+            # For all other cases, they must match exactly
             if verilog_res == cpp_res:
                 is_match = True
 
@@ -172,7 +171,6 @@ def compare_results():
         print(f"\nFound {errors} mismatch(es).")
         sys.exit(1)
 
-# Main execution logic
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "--compare":
         compare_results()
@@ -184,6 +182,6 @@ if __name__ == "__main__":
             generate_cpp(lines)
             print("Successfully generated testbench.v and test_runner.cpp")
         except FileNotFoundError:
-            print("Error: test_vectors.txt not found. Please create it.")
+            print("Error: test_vectors.txt not found. Please create it")
         except Exception as e:
             print(f"An error occurred: {e}")

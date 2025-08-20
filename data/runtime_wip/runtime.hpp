@@ -566,6 +566,15 @@ public:
      */
     Bit<1> reduce_xnor() const { return !this->reduce_xor(); }
 
+    /**
+     * @brief Addition assignment operator
+     */
+    template <int M>
+    Bit<N>& operator+=(const Bit<M>& rhs) {
+        *this = *this + rhs;
+        return *this;
+    }
+
     explicit operator uint64_t() const {
         uint64_t value = 0;
         if (num_chunks > 0) {
