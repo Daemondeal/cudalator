@@ -34,6 +34,7 @@ OP_MAP = {
     "SUB_ASGN": {"type": "binary", "verilog": "a -= b", "cpp": "a -= b"},
     "MUL_ASGN": {"type": "binary", "verilog": "a *= b", "cpp": "a *= b"},
     "DIV_ASGN": {"type": "binary", "verilog": "a /= b", "cpp": "a /= b"},
+    "MOD_ASGN": {"type": "binary", "verilog": "a %= b", "cpp": "a %= b"},
 }
 
 def format_verilog_value(value, width):
@@ -88,7 +89,7 @@ def generate_verilog(lines):
                 if op_info["type"] == "binary":
                     b_name = f"b_{i}"
                     f.write(f"    {b_name} = {format_verilog_value(v2, w2)};\n")
-                    if op in ["ADD_ASGN", "SUB_ASGN", "MUL_ASGN", "DIV_ASGN"]:
+                    if op in ["ADD_ASGN", "SUB_ASGN", "MUL_ASGN", "DIV_ASGN", "MOD_ASGN"]:
                         # Perform the in-place SystemVerilog operation
                         in_place_op = op_info["verilog"].replace("a", a_name).replace("b", b_name)
                         f.write(f"    {in_place_op};\n")

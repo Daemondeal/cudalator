@@ -602,6 +602,15 @@ public:
         return *this;
     }
 
+    /**
+     * @brief Modulo assignment operator
+     */
+    template <int M>
+    Bit<N>& operator%=(const Bit<M>& rhs) {
+        *this = *this % rhs;
+        return *this;
+    }
+
     explicit operator uint64_t() const {
         uint64_t value = 0;
         if (num_chunks > 0) {
@@ -679,9 +688,9 @@ public:
      * The result width is the same as the DIVISOR (rhs).
      */
     template <int M>
-    auto operator%(const Bit<M>& divisor) const -> Bit<M> {
+    auto operator%(const Bit<M>& divisor) const -> Bit<N> { // Return Bit<N>
         if (divisor == Bit<M>(0)) {
-            Bit<M> all_ones;
+            Bit<N> all_ones; // Create a Bit<N>
             all_ones.chunks.fill(0xFFFFFFFF);
             all_ones.apply_mask();
             return all_ones;
