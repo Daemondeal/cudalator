@@ -183,9 +183,9 @@ def compare_results():
             print(f"   Result (C++):     {cpp_res}")
 
     if errors == 0:
-        print("All tests passed!")
+        print("\033[92mAll tests passed!\033[0m")
     else:
-        print(f"\nFound {errors} mismatch(es).")
+        print(f"\033[91m\nFound {errors} mismatch(es).\033[0m")
         sys.exit(1)
 
 if __name__ == "__main__":

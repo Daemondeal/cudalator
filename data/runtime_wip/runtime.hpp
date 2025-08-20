@@ -1,15 +1,13 @@
 #ifndef RUNTIME_HPP
 #define RUNTIME_HPP
 
-#include <algorithm> // For std::max
 #include <array>
 #include <cstdint>
 #include <initializer_list>
-#include <iomanip>   // For std::hex, std::setw, std::setfill
-#include <sstream>   // For std::stringstream
-#include <stdexcept> // For std::invalid_argument
+#include <iomanip>
+#include <sstream>
 #include <string>
-#include <type_traits> // For std::is_integral_v and std::enable_if_t
+#include <type_traits>
 
 /**
  * (operators), (name), (implemented)
@@ -37,9 +35,9 @@
  * without X,Z)
  * (==? !=?), (Binary wildcard equality operators), (not applicable without X,Z)
  * (++ --), (Unary increment, decrement operators), (yes)
- * (inside), (Binary set membership operator), ()
+ * (inside), (Binary set membership operator), (yes)
  * (dist), (Binary distribution operator), (nope, absolutely not)
- * ({} {{}}), (Concatenation, replication operators), ()
+ * ({} {{}}), (Concatenation, replication operators), (yes)
  * (<<{} >>{}), (Stream operators), (i would like not to implement also these)
  */
 
@@ -53,6 +51,7 @@ class Bit {
     friend class Bit;
 
 public:
+    static constexpr int width = N;
     /**
      * @brief Default constructor.
      * Creates a Bit vector zero-initialized
@@ -68,7 +67,7 @@ public:
     }
 
     /**
-     * @brief Constructor from a list of 32-bit chunks.
+     * @brief Constructor from a list of 32-bit chunks
      * For chunks > 64 bits. Chunks from least significant to most
      * significant.
      * Example: Bit<96> a = {0xFFFFFFFF, 0x0000FFFF,
@@ -88,12 +87,11 @@ public:
      */
     template <int M>
     Bit(const Bit<M>& rhs) {
-        // reusing the assignment operator
         *this = rhs;
     }
 
     /**
-     * @brief Assignment from another Bit vector.
+     * @brief Assignment from another Bit vector
      * Handles assignment from both same-sized and different-sized Bit
      * vectors. Truncates if the source is larger, zero-extends if it is
      * smaller.
@@ -118,7 +116,7 @@ public:
     }
 
     /**
-     * @brief Assignment from a single integral value.
+     * @brief Assignment from a single integral value
      */
     template <typename T, typename = std::enable_if_t<std::is_integral_v<T>>>
     Bit& operator=(T value) {
@@ -127,7 +125,7 @@ public:
     }
 
     /**
-     * @brief Equality comparison operator.
+     * @brief Equality comparison operator
      */
     template <int M>
     Bit<1> operator==(const Bit<M>& rhs) const {
@@ -154,27 +152,35 @@ public:
         return !(*this == rhs);
     }
 
-    // Prefix Increment (++a)
+    /**
+     * @brief Prefix increment (++a)
+     */
     Bit<N>& operator++() {
         *this += Bit<1>(1);
         return *this; // return the new incremented value
     }
 
-    // Postfix Increment (a++)
-    // int as a dummy parameter to distinguish the signature
+    /**
+     * @brief postfix increment (a++)
+     * I'm using int as a dummy parameter to distinguish the signature
+     */
     Bit<N> operator++(int) {
         Bit<N> temp = *this;
         *this += Bit<1>(1);
         return temp;
     }
 
-    // Prefix Decrement (--a)
+    /**
+     * @brief prefix decrement (--a)
+     */
     Bit<N>& operator--() {
         *this -= Bit<1>(1);
         return *this;
     }
 
-    // Postfix Decrement (a--)
+    /**
+     * @brief postfix decrement (a--)
+     */
     Bit<N> operator--(int) {
         Bit<N> temp = *this;
         *this -= Bit<1>(1);
@@ -182,7 +188,7 @@ public:
     }
 
     /**
-     * @brief Mimics the Verilog 'inside' operator to check for set membership
+     * @brief mimics the Verilog 'inside' operator to check for set membership
      * @param value_to_check The value to look for
      * @param values_in_set A variable number of values that form the set
      * @return Bit<1>(1) if the value is in the set, Bit<1>(0) otherwise
@@ -192,13 +198,59 @@ public:
                          const T_Set&... values_in_set) {
         bool is_inside = false;
         // è una fold expression, in teoria solo c++17, potenzialmente da
-        // cambiare OR sul result di ogni equality check
+        // cambiare
+        // OR sul result di ogni equality check
         ((is_inside = is_inside || (value_to_check == values_in_set)), ...);
         return Bit<1>(is_inside);
     }
 
     /**
-     * @brief Addition operator.
+     * @brief Concatenates multiple Bit vectors into a single, wider Bit vector
+     * Verilog equivalent: {arg1, arg2, ...}
+     */
+    template <typename... Args>
+    static auto concat(const Args&... args) {
+        constexpr int FINAL_WIDTH = (0 + ... + std::decay_t<Args>::width);
+        static_assert(FINAL_WIDTH <= 128,
+                      "Concatenation result exceeds 128 bits");
+
+        Bit<FINAL_WIDTH> result;
+        int current_shift = FINAL_WIDTH; // Start shift from the top (MSB)
+
+        // lambda to place each argument
+        auto process = [&](const auto& arg) {
+            constexpr int arg_width = std::decay_t<decltype(arg)>::width;
+            current_shift -= arg_width; // Move the shift position down
+            Bit<FINAL_WIDTH> temp(arg);
+            result |= (temp << current_shift); // Place the argument
+        };
+
+        (process(args), ...); // Process from left-to-right (MSB to LSB)
+        return result;
+    }
+
+    /**
+     * @brief Replicates a Bit vector a specified number of times
+     * Verilog equivalent: {N{val}}
+     */
+    template <int REPLICATION_COUNT, int M>
+    static auto replicate(const Bit<M>& val) {
+        constexpr int FINAL_WIDTH = REPLICATION_COUNT * M;
+        static_assert(FINAL_WIDTH > 0,
+                      "Replication must result in a positive width.");
+        static_assert(FINAL_WIDTH <= 128,
+                      "Replication result exceeds 128 bits");
+
+        Bit<FINAL_WIDTH> result;
+
+        for (int i = 0; i < REPLICATION_COUNT; ++i) {
+            result |= (Bit<FINAL_WIDTH>(val) << (i * M));
+        }
+        return result;
+    }
+
+    /**
+     * @brief Addition operator
      * Adds two Bit vectors, returning a new vector with the result.
      * The result is one bit wider to accommodate a carry-out, UNLESS
      * that would exceed the 128-bit limit, in which case the carry is
@@ -285,7 +337,7 @@ public:
         for (int j = 0; j < rhs_chunks; ++j) {
             uint64_t carry = 0;
             for (int i = 0; i < num_chunks; ++i) {
-                // BOUNDS CHECK: Only proceed if the result chunk is within our
+                // only proceed if the result chunk is within our
                 // capped Bit object
                 if (i + j < result.num_chunks) {
                     uint64_t product =
@@ -359,7 +411,7 @@ public:
     }
 
     /**
-     * @brief logical left shift operator, filling with zeros.
+     * @brief logical left shift operator, filling with zeros
      */
     Bit<N> operator<<(int shift) const {
         Bit<N> result;
@@ -392,7 +444,7 @@ public:
     }
 
     /**
-     * @brief Logical left shift by another Bit vector (like the Verilog shift
+     * @brief logical left shift by another Bit vector (aka Verilog shift
      * of a variable amount)
      */
     template <int M>
@@ -467,7 +519,7 @@ public:
         constexpr int result_chunks = (RESULT_BITS + 31) / 32;
 
         for (int i = 0; i < result_chunks; ++i) {
-            // Treat missing chunks in shorter numbers as zero for the AND
+            // treating missing chunks in shorter numbers as zero for the AND
             // operation
             uint32_t lhs_chunk = (i < num_chunks) ? chunks[i] : 0;
             uint32_t rhs_chunk = (i < rhs_chunks) ? rhs.chunks[i] : 0;
@@ -490,7 +542,7 @@ public:
         constexpr int result_chunks = (RESULT_BITS + 31) / 32;
 
         for (int i = 0; i < result_chunks; ++i) {
-            // Treat missing chunks in shorter numbers as zero for the OR
+            // treating missing chunks in shorter numbers as zero for the OR
             // operation
             uint32_t lhs_chunk = (i < num_chunks) ? chunks[i] : 0;
             uint32_t rhs_chunk = (i < rhs_chunks) ? rhs.chunks[i] : 0;
@@ -513,7 +565,7 @@ public:
         constexpr int result_chunks = (RESULT_BITS + 31) / 32;
 
         for (int i = 0; i < result_chunks; ++i) {
-            // Treat missing chunks in shorter numbers as zero for the XOR
+            // treating missing chunks in shorter numbers as zero for the XOR
             // operation
             uint32_t lhs_chunk = (i < num_chunks) ? chunks[i] : 0;
             uint32_t rhs_chunk = (i < rhs_chunks) ? rhs.chunks[i] : 0;
@@ -549,8 +601,9 @@ public:
 
         return Bit<1>(lhs_is_true || rhs_is_true);
     }
+
     /**
-     * @brief Performs a logical implication (if-then).
+     * @brief Performs a logical implication (if-then)
      * Treats the entire vector as a single boolean value.
      * Logically equivalent to !(*this) || rhs.
      * @return Bit<1>(1) for true, Bit<1>(0) for false.
@@ -567,7 +620,7 @@ public:
      */
     template <int M>
     Bit<1> logical_equivalence(const Bit<M>& rhs) const {
-        // Implements (A -> B) && (B -> A)
+        // implementing (A -> B) && (B -> A)
         return this->logical_implication(rhs) && rhs.logical_implication(*this);
     }
 
@@ -585,12 +638,16 @@ public:
         }
     }
 
-    // Unary Plus (+a)
+    /**
+     * @brief unary plus (+a)
+     */
     Bit<N> operator+() const {
         return *this; // returns a copy of the object unchanged
     }
 
-    // Unary Minus (-a)
+    /**
+     * @brief unary minus (-a)
+     */
     Bit<N> operator-() const {
         // 2s complement is (~a + 1)
         return ~(*this) + Bit<1>(1);
@@ -621,7 +678,7 @@ public:
      * @return Bit<1>(1) if all bits are 1, Bit<1>(0) otherwise
      */
     Bit<1> reduce_and() const {
-        // Create a temporary vector with all bits set to 1
+        // creating a temporary vector with all 1s
         Bit<N> all_ones;
         all_ones.chunks.fill(0xFFFFFFFF);
         all_ones.apply_mask(); // mask it to the correct width N
@@ -631,18 +688,18 @@ public:
     }
 
     /**
-     * @brief Performs a reduction OR on the vector.
-     * @return Bit<1>(1) if any bit is 1, Bit<1>(0) otherwise.
+     * @brief Performs a reduction OR on the vector
+     * @return Bit<1>(1) if any bit is 1, Bit<1>(0) otherwise
      */
     Bit<1> reduce_or() const {
-        // The reduction OR is 1 if the number is non-zero.
+        // The reduction OR is 1 if the number is non-zero
         return Bit<1>(static_cast<bool>(*this));
     }
 
     /**
      * @brief Performs a reduction XOR on the vector
      * @return Bit<1>(1) if there is an odd number of set bits, Bit<1>(0)
-     * otherwise.
+     * otherwise
      */
     Bit<1> reduce_xor() const {
         int total_set_bits = 0;
@@ -765,6 +822,8 @@ public:
     }
 
     explicit operator uint64_t() const {
+        // static_assert(N <= 64, "Bit<N> is too wide to be cast to uint64_t
+        // without data loss.");
         uint64_t value = 0;
         if (num_chunks > 0) {
             value = chunks[0];
@@ -772,15 +831,14 @@ public:
         if (num_chunks > 1) {
             value |= static_cast<uint64_t>(chunks[1]) << 32;
         }
-        // For simplicity, we just return the lower 64 bits.
-        // A more complex implementation could handle overflow.
+        // For simplicity, i'm returning the lower 64 bits
+        // A more complex implementation could handle overflow
         return value;
     }
 
     /**
      * @brief Explicit conversion to bool
-     * Allows a Bit object to be used in a boolean context (e.g., if
-     * statements). Returns true if the vector is non-zero, false otherwise
+     * returns true if the vector is non-zero, false otherwise
      */
     explicit operator bool() const {
         for (int i = 0; i < num_chunks; ++i) {
@@ -792,8 +850,8 @@ public:
     }
 
     /**
-     * @brief Division operator.
-     * The result width is the same as the WIDER of the two operands.
+     * @brief Division operator
+     * The result width is the same as the WIDER of the two operands
      */
     template <int M>
     auto operator/(const Bit<M>& divisor) const -> Bit<max(N, M)> {
@@ -825,7 +883,7 @@ public:
                 remainder.chunks[0] |= 1;
             }
             // 3. If the remainder is now greater than or equal to the divisor,
-            // we can subtract.
+            // we can subtract
             if (remainder >= divisor) {
                 remainder = remainder - divisor;
                 // set the corresponding bit in the quotient to 1
@@ -837,8 +895,8 @@ public:
     }
 
     /**
-     * @brief Modulo operator.
-     * The result width is the same as the DIVISOR (rhs).
+     * @brief Modulo operator
+     * The result width is the same as the DIVISOR (rhs)
      */
     template <int M>
     auto operator%(const Bit<M>& divisor) const -> Bit<N> { // Return Bit<N>
@@ -863,14 +921,14 @@ public:
             }
         }
 
-        // The final remainder is cast to the width of the divisor.
+        // The final remainder is cast to the width of the divisor
         return Bit<M>(remainder);
     }
 
     /**
      * @brief Converts the Bit vector to a hexadecimal string.
-     * Mimics the behavior of Verilog's '$display("%h", ...)' for comparison.
-     * @return A std::string containing the hexadecimal representation.
+     * Mimics the behavior of Verilog's '$display("%h", ...)' for comparison
+     * @return A std::string containing the hexadecimal representation
      */
     std::string to_string() const {
         std::stringstream ss;
