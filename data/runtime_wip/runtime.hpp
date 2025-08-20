@@ -611,6 +611,33 @@ public:
         return *this;
     }
 
+    /**
+     * @brief Bitwise AND assignment operator
+     */
+    template <int M>
+    Bit<N>& operator&=(const Bit<M>& rhs) {
+        *this = *this & rhs;
+        return *this;
+    }
+
+    /**
+     * @brief Bitwise OR assignment operator
+     */
+    template <int M>
+    Bit<N>& operator|=(const Bit<M>& rhs) {
+        *this = *this | rhs;
+        return *this;
+    }
+
+    /**
+     * @brief Bitwise XOR assignment operator
+     */
+    template <int M>
+    Bit<N>& operator^=(const Bit<M>& rhs) {
+        *this = *this ^ rhs;
+        return *this;
+    }
+
     explicit operator uint64_t() const {
         uint64_t value = 0;
         if (num_chunks > 0) {
