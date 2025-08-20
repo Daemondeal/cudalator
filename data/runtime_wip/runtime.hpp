@@ -30,15 +30,13 @@
  * (>> <<), (Binary logical shift operators), (yes)
  * (>>> <<<), (Binary arithmetic shift operators), (no but again it's only
  * unsigned)
- * (&& || -> <->), (Binary logical operators), (yes except logical implication
- * -that is equal to !expression1 || expression2- and the logical equivalence
- * -that is equal to (expression1 -> expression2) && (expression2 ->
- * expression1)-)
+ * (&& || -> <->), (Binary logical operators), (yes)
  * (< <= > >=), (Binary relational operators), (yes)
  * (== !=), (Binary case equality operators), (yes)
- * (=== !== ==? !=?), (Binary logical equality operators), ()
- * (==? !=?), (Binary wildcard equality operators), ()
- * (++ --), (Unary increment, decrement operators), ()
+ * (=== !== ==? !=?), (Binary logical equality operators), (not applicable
+ * without X,Z)
+ * (==? !=?), (Binary wildcard equality operators), (not applicable without X,Z)
+ * (++ --), (Unary increment, decrement operators), (yes but not tested)
  * (inside), (Binary set membership operator), ()
  * (dist), (Binary distribution operator), ()
  * ({} {{}}), (Concatenation, replication operators), ()
@@ -154,6 +152,33 @@ public:
     template <int M>
     Bit<1> operator!=(const Bit<M>& rhs) const {
         return !(*this == rhs);
+    }
+
+    // Prefix Increment (++a)
+    Bit<N>& operator++() {
+        *this += Bit<1>(1);
+        return *this; // return the new incremented value
+    }
+
+    // Postfix Increment (a++)
+    // int as a dummy parameter to distinguish the signature
+    Bit<N> operator++(int) {
+        Bit<N> temp = *this;
+        *this += Bit<1>(1);
+        return temp;
+    }
+
+    // Prefix Decrement (--a)
+    Bit<N>& operator--() {
+        *this -= Bit<1>(1);
+        return *this;
+    }
+
+    // Postfix Decrement (a--)
+    Bit<N> operator--(int) {
+        Bit<N> temp = *this;
+        *this -= Bit<1>(1);
+        return temp;
     }
 
     /**
