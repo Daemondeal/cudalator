@@ -141,30 +141,42 @@ def compare_results():
     verilog_path = os.path.join(BUILD_DIR, "verilog_results.txt")
     cpp_path = os.path.join(BUILD_DIR, "cpp_results.txt")
     with open(verilog_path, "r") as fv, open(cpp_path, "r") as fc:
-        # (The rest of this function is unchanged, including your color formatting)
         verilog_lines = [line for line in fv if line.strip()]
         cpp_lines = [line for line in fc if line.strip()]
+
     errors = 0
     for i, (vline, cline) in enumerate(zip(verilog_lines, cpp_lines)):
         test_case = vline.split("->")[0]
         verilog_res = vline.split(":")[-1].strip()
         cpp_res = cline.split(":")[-1].strip()
+
         is_div_by_zero = re.search(r"\s*(DIV|MOD)(_ASGN)?,\s*\d+,\s*[^,]+,\s*\d+,\s*0\s*,", test_case)
         is_match = False
+
         if is_div_by_zero:
             is_verilog_x = all(c == 'x' for c in verilog_res)
-            is_cpp_f = all(c == 'f' for c in cpp_res)
-            if is_verilog_x and is_cpp_f:
-                is_match = True
+            try:
+                result_width_str = test_case.split(',')[5].strip()
+                result_width = int(result_width_str)
+                all_ones_val = (1 << result_width) - 1
+                expected_cpp_res = f"{all_ones_val:x}"
+
+                if is_verilog_x and cpp_res == expected_cpp_res:
+                    is_match = True
+            except (IndexError, ValueError):
+                is_match = False
+
         else:
             if verilog_res == cpp_res:
                 is_match = True
+
         if not is_match:
             errors += 1
             print(f"   Mismatch on line {i+1}:")
             print(f"   Test: {test_case}")
             print(f"   Golden (Verilog): {verilog_res}")
             print(f"   Result (C++):     {cpp_res}")
+
     if errors == 0:
         print("\033[92mAll tests passed!\033[0m")
     else:
