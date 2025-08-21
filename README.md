@@ -6,8 +6,9 @@ Project for the course GPU Programming, a.y. 2024/2025.
 
 1. [How to build](#how-to-build)
 2. [Docs](#docs)
-4. [Libraries](#libraries-used)
-3. [Dependencies](#dependencies)
+3. [Tools](#tools)
+4. [Libraries Used](#libraries-used)
+5. [Dependencies](#dependencies)
 
 
 ## How to build
@@ -20,7 +21,7 @@ pip install -r requirements.txt
 make
 
 # Runs on a sample circuit
-cargo run
+./tools/run_demo.sh ./demos/adder/
 ```
 
 ## Docs
@@ -30,9 +31,18 @@ Docs are available at [https://daemondeal.github.io/cudalator/](https://daemonde
 
 If you are a contributor, run `mkdocs gh-deploy` whenever you modify the docs.
 
+## Tools
+
+The project includes some tools useful for contributors. They are all found in the tools subdirectory, and they expect to be called from the root folder.
+
+These tools are:
+- `./tools/run_tester.sh`: Runs a systemverilog file with Verilator, Icarus Verilog and Questasim, then shows their outputs. Useful to check the expected behavior of a SV construct.
+- `./tools/run_demo.sh`: Given a folder, it will compile every `.sv` file inside with Cudalator, then copy `main.cpp` inside the resulting folder, then run the demo. Try the demos inside `./demos`
+
 ## Libraries Used
 
 - [Surelog](https://github.com/chipsalliance/Surelog)
+- [fmt](https://github.com/fmtlib/fmt)
 
 
 ## Dependencies

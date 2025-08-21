@@ -1,5 +1,7 @@
 #include "surelog_cpp_wrapper.hpp"
 
+#include <cstddef>
+#include <cstring>
 #include <iostream>
 #include <uhdm/vpi_visitor.h>
 
@@ -29,7 +31,7 @@ public:
         }
     }
 
-    vpiHandle compile_to_handle(char const* const* sources, size_t sources_len)
+    vpiHandle compile_to_handle(char const* const* sources, size_t sources_len, char const* top_module)
     {
         m_clp->noPython();
         m_clp->setMuteStdout();
@@ -39,12 +41,24 @@ public:
         m_clp->setElaborate(true); // Request Surelog instance tree elaboration
         m_clp->setElabUhdm(true); // Request UHDM Uniquification/Elaboration
 
-        (void)sources_len;
-        // TODO: Do this properly
-        char const* args[] = { "", sources[0] };
-        m_clp->parseCommandLine(2, args);
+        if (strcmp(top_module, "") != 0) {
+            m_clp->setTopLevelModule(top_module);
+        }
+
+        // The easiest way of passing mulitple files to Surelog is to give them to it via command line. 
+        // This is a bit hacky, but it works fine.
+        char const **args = new char const*[sources_len + 1];
+        args[0] = "";
+        for (size_t i = 0; i < sources_len; i++) {
+            args[i+1] = sources[i];
+        }
+
+        m_clp->parseCommandLine(sources_len+1, args);
+
 
         m_compiler = SURELOG::start_compiler(m_clp.get());
+
+        delete[] args;
 
         return SURELOG::get_uhdm_design(m_compiler);
     }
@@ -64,8 +78,8 @@ SystemVerilogDesign *design_create() {
     return d;
 }
 
-vpiHandle design_compile(SystemVerilogDesign *d, char const* const* sources, size_t sources_len) {
-    return d->compile_to_handle(sources, sources_len);
+vpiHandle design_compile(SystemVerilogDesign *d, char const* const* sources, unsigned long long sources_len, char const* top_module) {
+    return d->compile_to_handle(sources, sources_len, top_module);
 };
 
 void design_free(SystemVerilogDesign *d) {

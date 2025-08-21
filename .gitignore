@@ -1,5 +1,7 @@
+private/
 target/
 
+build-run-test
 build/*
 slpp_all/*
 libraries/*
@@ -34,3 +36,6 @@ simv
 *.txt
 runtime_test
 simv
+
+# clang-format
+.clang-format

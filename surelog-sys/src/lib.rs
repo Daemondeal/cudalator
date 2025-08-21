@@ -7,6 +7,7 @@ pub struct VpiIterator {
 }
 
 // TODO: Figure out why time is stored in two separate integers
+#[derive(Debug)]
 pub enum VpiTime {
     SimTime { high: u32, low: u32 },
     ScaledRealTime(f64),
@@ -27,6 +28,7 @@ impl VpiTime {
     }
 }
 
+#[derive(Debug)]
 pub enum VpiValue {
     BinaryString(String),
     OctalString(String),
@@ -163,7 +165,7 @@ impl VpiHandle {
         self.vpi_get(bindings::vpiType) as u32
     }
 
-    pub fn vpi_visit(&self) {
+    pub fn vpi_debug_print(&self) {
         unsafe {
             bindings::vpi_visit(self.handle);
         }
@@ -209,7 +211,7 @@ impl Drop for SVDesign {
     }
 }
 
-pub fn compile(sources: &[&str]) -> SVDesign {
+pub fn compile(sources: &[&str], top_module: Option<&str>) -> SVDesign {
     let c_string_container = sources
         .iter()
         .map(|x| CString::new(*x).unwrap())
@@ -220,9 +222,12 @@ pub fn compile(sources: &[&str]) -> SVDesign {
         .map(|x| x.as_ptr())
         .collect::<Vec<_>>();
 
+    let top = top_module.unwrap_or("");
+    let top_cstring = CString::new(top).unwrap();
+
     unsafe {
         let design = bindings::design_create();
-        let handle = bindings::design_compile(design, c_strings.as_ptr(), c_strings.len());
+        let handle = bindings::design_compile(design, c_strings.as_ptr(), c_strings.len() as u64, top_cstring.as_ptr());
 
         SVDesign { design, handle }
     }

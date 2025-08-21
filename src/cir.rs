@@ -1,31 +1,51 @@
 use paste::paste;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct ScopeIdx(usize);
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct SignalIdx(usize);
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct ProcessIdx(usize);
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct ModuleIdx(usize);
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct TypeIdx(usize);
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct StatementIdx(usize);
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct ExprIdx(usize);
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct ConstantIdx(usize);
 
+// FIXME: We should probably have a better way of having unique ids for processes
+impl ProcessIdx {
+    pub fn get_idx(&self) -> u32 {
+        self.0 as u32
+    }
+}
+
+impl SignalIdx {
+    pub fn get_idx(&self) -> u32 {
+        self.0 as u32
+    }
+
+    // NOTE: This is somewhat dangerous, only use this if you are iterating over the signal array.
+    // TODO: Make an iterator for the signal array that generates the idx directly so we don't have
+    //       to expose this.
+    pub fn from_idx(x: u32) -> Self {
+        Self(x as usize)
+    }
+}
+
 // TODO: Maybe this needs another name
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Token {
     pub name: String,
     pub line: u32,
@@ -34,8 +54,8 @@ pub struct Token {
 impl Token {
     pub fn dummy() -> Self {
         Self {
-            name: "".to_owned(),
             line: 0,
+            name: "".to_string(),
         }
     }
 }
@@ -65,60 +85,77 @@ pub struct Scope {
 
     pub parent: Option<ScopeIdx>,
     pub signals: Vec<SignalIdx>,
+    pub is_top: bool,
 }
 
 impl Scope {
-    pub fn find_signal_by_name(&self, ast: &Ast, full_name: &str) -> Option<SignalIdx> {
+    pub fn find_signal(&self, ast: &Ast, full_name: &str) -> Option<SignalIdx> {
         for idx in &self.signals {
             if ast.get_signal(*idx).full_name == full_name {
                 return Some(*idx);
             }
         }
 
-        match self.parent {
-            Some(parent) => ast.get_scope(parent).find_signal_by_name(ast, full_name),
-            None => None,
+        None
+    }
+
+    pub fn find_signal_recursively(&self, ast: &Ast, full_name: &str) -> Option<SignalIdx> {
+        match self.find_signal(ast, full_name) {
+            Some(idx) => Some(idx),
+            None => match self.parent {
+                Some(parent) => ast
+                    .get_scope(parent)
+                    .find_signal_recursively(ast, full_name),
+                None => None,
+            },
         }
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SensitivtyKind {
     OnChange,
     Posedge,
     Negedge,
 }
 
+pub struct Block {
+    pub scope: ScopeIdx,
+    pub statements: Vec<StatementIdx>,
+}
+
 pub struct Process {
     pub token: Token,
-    pub statement: StatementIdx,
+    // pub statement: StatementIdx,
+    pub scope: ScopeIdx,
+    pub statements: Vec<StatementIdx>,
 
     pub sensitivity_list: Vec<(SensitivtyKind, SignalIdx)>,
     pub should_populate_sensitivity_list: bool,
+}
+
+pub enum SelectKind {
+    None,
+    Bit(ExprIdx),
+    Parts { lhs: ExprIdx, rhs: ExprIdx },
 }
 
 pub enum StatementKind {
     Invalid,
 
     Assignment {
-        lhs: ExprIdx,
+        lhs: SignalIdx,
         rhs: ExprIdx,
-        blocking: bool,
+        select: SelectKind,
     },
     Block {
-        statements: Vec<StatementIdx>,
-    },
-    ScopedBlock {
         statements: Vec<StatementIdx>,
         scope: ScopeIdx,
     },
     If {
         condition: ExprIdx,
         body: StatementIdx,
-    },
-    IfElse {
-        condition: ExprIdx,
-        body: StatementIdx,
-        else_: StatementIdx,
+        else_: Option<StatementIdx>,
     },
     While {
         condition: ExprIdx,
@@ -129,26 +166,9 @@ pub enum StatementKind {
         body: StatementIdx,
     },
 
-    Repeat {
-        condition: ExprIdx,
-        body: StatementIdx,
-    },
-
-    For {
-        condition: ExprIdx,
-        init: StatementIdx,
-        increment: StatementIdx,
-        body: StatementIdx,
-        scope: ScopeIdx,
-    },
-
     // TODO
     Case,
     Foreach,
-
-    Forever {
-        body: StatementIdx,
-    },
 
     Return {
         expr: ExprIdx,
@@ -164,6 +184,7 @@ pub struct Statement {
     pub kind: StatementKind,
 }
 
+#[derive(Clone, Copy)]
 pub enum UnaryOperator {
     UnaryMinus,
     UnaryPlus,
@@ -196,8 +217,28 @@ impl UnaryOperator {
             UnaryOperator::Negedge => "negedge",
         }
     }
+
+    // LRM 11.6.1 Table 11-21
+    pub fn get_size(&self, length_i: usize) -> usize {
+        match self {
+            UnaryOperator::UnaryMinus
+            | UnaryOperator::UnaryPlus
+            | UnaryOperator::BinaryNegation => length_i,
+
+            UnaryOperator::Not
+            | UnaryOperator::ReductionAnd
+            | UnaryOperator::ReductionNand
+            | UnaryOperator::ReductionOr
+            | UnaryOperator::ReductionNor
+            | UnaryOperator::ReductionXor
+            | UnaryOperator::ReductionXnor => 1,
+
+            UnaryOperator::Posedge | UnaryOperator::Negedge => 1,
+        }
+    }
 }
 
+#[derive(Clone, Copy)]
 pub enum BinaryOperator {
     Subtraction,
     Division,
@@ -212,6 +253,7 @@ pub enum BinaryOperator {
     RightShift,
     Addition,
     Multiplication,
+    Power,
     LogicalAnd,
     LogicalOr,
     BitwiseAnd,
@@ -236,6 +278,7 @@ impl BinaryOperator {
             BinaryOperator::RightShift => ">>",
             BinaryOperator::Addition => "+",
             BinaryOperator::Multiplication => "*",
+            BinaryOperator::Power => "**",
             BinaryOperator::LogicalAnd => "and",
             BinaryOperator::LogicalOr => "or",
             BinaryOperator::BitwiseAnd => "bw_and",
@@ -244,12 +287,41 @@ impl BinaryOperator {
             BinaryOperator::BitwiseXnor => "bw_xnor",
         }
     }
+
+    // LRM 11.6.1 Table 11-21
+    pub fn get_size(&self, length_i: usize, length_j: usize) -> usize {
+        match self {
+            BinaryOperator::Addition
+            | BinaryOperator::Subtraction
+            | BinaryOperator::Multiplication
+            | BinaryOperator::Division
+            | BinaryOperator::Modulo
+            | BinaryOperator::BitwiseAnd
+            | BinaryOperator::BitwiseOr
+            | BinaryOperator::BitwiseXor
+            | BinaryOperator::BitwiseXnor => std::cmp::max(length_i, length_j),
+
+            BinaryOperator::Equality
+            | BinaryOperator::NotEquality
+            | BinaryOperator::GreaterThan
+            | BinaryOperator::GreaterThanEq
+            | BinaryOperator::LessThan
+            | BinaryOperator::LessThanEq => 1,
+
+            // TODO: Operands are sized to max(L(i),L(j))
+            BinaryOperator::LogicalAnd | BinaryOperator::LogicalOr => 1,
+
+            BinaryOperator::LeftShift | BinaryOperator::RightShift | BinaryOperator::Power => {
+                length_i
+            }
+        }
+    }
 }
 
 pub enum ExprKind {
     Invalid,
     Constant {
-        constant: ConstantIdx
+        constant: ConstantIdx,
     },
     Unary {
         op: UnaryOperator,
@@ -279,6 +351,7 @@ pub enum ExprKind {
     },
 }
 
+#[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub enum SignalLifetime {
     Static,
     Automatic,
@@ -291,11 +364,22 @@ pub struct Signal {
     pub typ: TypeIdx,
     pub lifetime: SignalLifetime,
     pub full_name: String,
+    pub scope: ScopeIdx,
+
+    pub is_in_top_interface: bool,
+}
+
+impl Signal {
+    pub fn size(&self, ast: &Ast) -> usize {
+        let typ = ast.get_typ(self.typ);
+        return typ.size;
+    }
 }
 
 pub struct Expr {
     pub token: Token,
     pub kind: ExprKind,
+    pub size: usize,
 }
 
 pub enum TypeKind {
@@ -312,25 +396,41 @@ pub struct Type {
 
     pub kind: TypeKind,
     pub is_signed: bool,
+    pub size: usize,
 }
 
+#[derive(Clone)]
 pub struct Range {
     pub left: u32,
     pub right: u32,
 }
 
+impl Range {
+    pub fn size(&self) -> u32 {
+        if self.left > self.right {
+            1 + self.left - self.right
+        } else {
+            1 + self.right - self.left
+        }
+    }
+}
+
+#[derive(Debug)]
 pub enum ConstantKind {
     Integer(i64),
     UnsignedInteger(u64),
     Value { vals: Vec<u32> },
+    AllZero,
+    AllOnes,
     Invalid,
 }
 
 // TODO: This needs to be done properly
+#[derive(Debug)]
 pub struct Constant {
     pub token: Token,
 
-    pub size: u32,
+    pub size: usize,
     pub kind: ConstantKind,
 }
 

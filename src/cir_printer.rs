@@ -2,8 +2,8 @@ use std::io::Write;
 
 use crate::cir::{
     Ast, ConstantIdx, ConstantKind, ExprIdx, ExprKind, ModuleIdx, PortDirection, ProcessIdx,
-    ScopeIdx, SensitivtyKind, SignalIdx, SignalLifetime, StatementIdx, StatementKind, TypeIdx,
-    TypeKind,
+    ScopeIdx, SelectKind, SensitivtyKind, Signal, SignalIdx, SignalLifetime, StatementIdx,
+    StatementKind, TypeIdx, TypeKind,
 };
 
 type Res = Result<(), std::io::Error>;
@@ -71,9 +71,17 @@ fn sexpr_convert_process<'a>(ast: &'a Ast, process_idx: ProcessIdx) -> SExpr<'a>
             SensitivtyKind::Negedge => sensitivity.push(SExpr::expr("negedge", vec![signal_atom])),
         };
     }
-    children.push(SExpr::expr("sensitivity", sensitivity));
+    if sensitivity.is_empty() {
+        children.push(SExpr::atom("(sensitivity_empty)"))
+    } else {
+        children.push(SExpr::expr("sensitivity", sensitivity));
+    }
 
-    children.push(sexpr_convert_statement(ast, process.statement));
+    children.push(sexpr_convert_scope(ast, process.scope));
+
+    for statement in &process.statements {
+        children.push(sexpr_convert_statement(ast, *statement));
+    }
 
     SExpr::statement("process", children)
 }
@@ -83,22 +91,29 @@ fn sexpr_convert_statement<'a>(ast: &'a Ast, statement_idx: StatementIdx) -> SEx
 
     match &statement.kind {
         StatementKind::Invalid => SExpr::atom("invalid_stmt"),
-        StatementKind::Assignment { lhs, rhs, blocking } => SExpr::expr(
-            if *blocking {
-                "assign"
-            } else {
-                "assign_nonblock"
-            },
-            vec![sexpr_convert_expr(ast, *lhs), sexpr_convert_expr(ast, *rhs)],
-        ),
-        StatementKind::Block { statements } => SExpr::statement(
-            "block",
-            statements
-                .iter()
-                .map(|s| sexpr_convert_statement(ast, *s))
-                .collect(),
-        ),
-        StatementKind::ScopedBlock { statements, scope } => SExpr::statement(
+        StatementKind::Assignment { lhs, rhs, select } => {
+            let signal = sexpr_convert_signal(ast, *lhs);
+
+            let target = match select {
+                SelectKind::None => signal,
+                SelectKind::Bit(expr_idx) => SExpr::expr(
+                    "select_bit",
+                    vec![sexpr_convert_expr(ast, *expr_idx), signal],
+                ),
+                SelectKind::Parts { lhs, rhs } => SExpr::expr(
+                    "select_part",
+                    vec![
+                        sexpr_convert_expr(ast, *lhs),
+                        sexpr_convert_expr(ast, *rhs),
+                        signal,
+                    ],
+                ),
+            };
+
+            SExpr::expr("assign", vec![target, sexpr_convert_expr(ast, *rhs)])
+        }
+
+        StatementKind::Block { statements, scope } => SExpr::statement(
             "block",
             vec![
                 sexpr_convert_scope(ast, *scope),
@@ -111,26 +126,22 @@ fn sexpr_convert_statement<'a>(ast: &'a Ast, statement_idx: StatementIdx) -> SEx
                 },
             ],
         ),
-        StatementKind::If { condition, body } => SExpr::statement(
-            "if",
-            vec![
-                SExpr::expr("condition", vec![sexpr_convert_expr(ast, *condition)]),
-                sexpr_convert_statement(ast, *body),
-            ],
-        ),
 
-        StatementKind::IfElse {
+        StatementKind::If {
             condition,
             body,
             else_,
-        } => SExpr::statement(
-            "if_else",
-            vec![
+        } => {
+            let mut statements = vec![
                 SExpr::expr("condition", vec![sexpr_convert_expr(ast, *condition)]),
                 sexpr_convert_statement(ast, *body),
-                sexpr_convert_statement(ast, *else_),
-            ],
-        ),
+            ];
+            if let Some(else_) = else_ {
+                statements.push(sexpr_convert_statement(ast, *else_));
+            }
+
+            SExpr::statement("if", statements)
+        }
         StatementKind::While { condition, body } => SExpr::statement(
             "while",
             vec![
@@ -147,37 +158,9 @@ fn sexpr_convert_statement<'a>(ast: &'a Ast, statement_idx: StatementIdx) -> SEx
             ],
         ),
 
-        StatementKind::Repeat { condition, body } => SExpr::statement(
-            "repeat",
-            vec![
-                SExpr::expr("condition", vec![sexpr_convert_expr(ast, *condition)]),
-                sexpr_convert_statement(ast, *body),
-            ],
-        ),
-
-        StatementKind::For {
-            condition,
-            init,
-            increment,
-            body,
-            scope,
-        } => SExpr::statement(
-            "for",
-            vec![
-                sexpr_convert_scope(ast, *scope),
-                sexpr_convert_statement(ast, *init),
-                SExpr::expr("condition", vec![sexpr_convert_expr(ast, *condition)]),
-                sexpr_convert_statement(ast, *increment),
-                sexpr_convert_statement(ast, *body),
-            ],
-        ),
-
         StatementKind::Case => todo!(),
         StatementKind::Foreach => todo!(),
 
-        StatementKind::Forever { body } => {
-            SExpr::statement("forever", vec![sexpr_convert_statement(ast, *body)])
-        }
         StatementKind::Return { expr } => {
             SExpr::expr("return", vec![sexpr_convert_expr(ast, *expr)])
         }
@@ -223,10 +206,22 @@ fn sexpr_convert_expr<'a>(ast: &'a Ast, expr_idx: ExprIdx) -> SExpr<'a> {
     }
 }
 
+// TODO: Maybe this should remove also the top entity's name
+fn clean_signal_name(signal: &Signal) -> &str {
+    let signal_name = &signal.full_name;
+    let split_name = signal_name.split("@").collect::<Vec<_>>();
+    if split_name.len() > 1 {
+        split_name[1]
+    } else {
+        signal_name
+    }
+}
+
 fn sexpr_convert_signal<'a>(ast: &'a Ast, signal_idx: SignalIdx) -> SExpr<'a> {
     let signal = ast.get_signal(signal_idx);
+    let name = clean_signal_name(signal);
 
-    SExpr::atom(&signal.token.name)
+    SExpr::atom(name)
 }
 
 fn sexpr_convert_constant<'a>(ast: &'a Ast, constant_idx: ConstantIdx) -> SExpr<'a> {
@@ -257,6 +252,8 @@ fn sexpr_convert_constant<'a>(ast: &'a Ast, constant_idx: ConstantIdx) -> SExpr<
                 .collect();
             SExpr::expr("constant", children)
         }
+        ConstantKind::AllZero => SExpr::atom("'0"),
+        ConstantKind::AllOnes => SExpr::atom("'1"),
         ConstantKind::Invalid => SExpr::atom("invalid_constant"),
     }
 }
@@ -273,7 +270,7 @@ fn sexpr_convert_scope<'a>(ast: &'a Ast, scope_idx: ScopeIdx) -> SExpr<'a> {
     for signal_idx in &scope.signals {
         let signal = ast.get_signal(*signal_idx);
 
-        let signal_name = &signal.token.name;
+        let signal_name = clean_signal_name(signal);
         let signal_type = sexpr_convert_type(ast, signal.typ);
         let signal_lifetime = match signal.lifetime {
             SignalLifetime::Static => SExpr::atom("var_static"),
