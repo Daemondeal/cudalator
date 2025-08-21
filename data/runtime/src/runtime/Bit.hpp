@@ -3,452 +3,135 @@
 #include <array>
 #include <cstdint>
 #include <initializer_list>
+#include <iomanip>
+#include <sstream>
 #include <string>
-
+#include <type_traits>
 #include <fmt/core.h>
 
 /**
- * -- non ho idea di cosa volessi dire con questo commento
-Quindi praticamente l'idea è che ci arriva un vettore
-Bit<128> a = [{0, 0, 0, 1}];
-2^96
-Bit<96> a = Bit<128>({qua i valori})
-E per i signed scusa? Non stiamo facendo nulla, cosa cambia?
+ * (operators), (name), (implemented)
+ * (=), (Binary assignment operator), (yes)
+ * (+= -= *= /= %=), (Binary arithmetic assignment operators), (yes)
+ * (&= |= ^=), (Binary bitwise assignment operators), (yes)
+ * (<<= >>=), (Binary logical shift assignment operators), (yes)
+ * (<<<= >>>=), (Binary arithmetic shift assignment operators), (no but i'm
+ * supporting only unsigned ops)
+ * (?:), (Conditional operator), (yes)
+ * (+ -), (Unary arithmetic operators), (yes)
+ * (~), (Unary bitwise negation operator), (yes)
+ * (!), (Unary logical negation operator), (yes)
+ * (& ~& | ~| ^ ~^), (Unary reduction operators), (yes)
+ * (+ - * /), (Binary arithmetic operators), (yes)
+ * (%), (Binary arithmetic modulus operator), (yes)
+ * (& | ^ ^~ ~^), (Binary bitwise operators), (yes)
+ * (>> <<), (Binary logical shift operators), (yes)
+ * (>>> <<<), (Binary arithmetic shift operators), (no but again it's only
+ * unsigned)
+ * (&& || -> <->), (Binary logical operators), (yes)
+ * (< <= > >=), (Binary relational operators), (yes)
+ * (== !=), (Binary case equality operators), (yes)
+ * (=== !== ==? !=?), (Binary logical equality operators), (not applicable
+ * without X,Z)
+ * (==? !=?), (Binary wildcard equality operators), (not applicable without X,Z)
+ * (++ --), (Unary increment, decrement operators), (yes)
+ * (inside), (Binary set membership operator), (yes)
+ * (dist), (Binary distribution operator), (nope, absolutely not)
+ * ({} {{}}), (Concatenation, replication operators), (yes)
+ * (<<{} >>{}), (Stream operators), (i would like not to implement also these)
+ */
 
-// TODO: ti mancano i reduction operators che ti collassano il vettore ad
-// uno scalare
-*/
-
+/**
+ * Lo shift ha bisogno di essere castato
+ */
 template <int N>
 class Bit {
-    static_assert(N > 0 && N <= 128, "Bit width must be between 1 and 128");
+    static_assert(N > 0 && N <= 128, "The maximum supported bit width is 128");
 
-    static constexpr int num_chunks = (N + 31) / 32;
+    static constexpr int max(int a, int b) { return a > b ? a : b; }
 
-    static constexpr std::array<uint32_t, num_chunks> compute_mask() {
-        std::array<uint32_t, num_chunks> mask{};
-        for (int i = 0; i < num_chunks; ++i) {
-            if (i == num_chunks - 1 && N % 32 != 0) {
-                mask[i] = (1U << (N % 32)) - 1;
-            } else {
-                mask[i] = 0xFFFFFFFF;
-            }
-        }
-        return mask;
-    }
-
-    static constexpr std::array<uint32_t, num_chunks> mask = compute_mask();
-
-    std::array<uint32_t, num_chunks> chunks{};
-
-    void apply_mask() {
-        for (int i = 0; i < num_chunks; ++i)
-            chunks[i] &= mask[i];
-    }
-
-    void copy_from_init(std::initializer_list<uint32_t> init) {
-        chunks.fill(0);
-        int i = 0;
-        for (uint32_t val : init) {
-            if (i >= num_chunks)
-                break;
-            chunks[i++] = val;
-        }
-        apply_mask();
-    }
+    template <int M>
+    friend class Bit;
 
 public:
+    static constexpr int width = N;
+    /**
+     * @brief Default constructor.
+     * Creates a Bit vector zero-initialized
+     */
     Bit() = default;
 
-    static constexpr int max(uint32_t a, uint32_t b) { return (a > b) ? a : b; }
+    /**
+     * @brief Constructor from a single integral value.
+     */
+    template <typename T, typename = std::enable_if_t<std::is_integral_v<T>>>
+    explicit Bit(T value) {
+        set_value(value);
+    }
 
-    // Usual constructor by {}
+    /**
+     * @brief Constructor from a list of 32-bit chunks
+     * For chunks > 64 bits. Chunks from least significant to most
+     * significant.
+     * Example: Bit<96> a = {0xFFFFFFFF, 0x0000FFFF,
+     * 0x00000001};
+     */
     Bit(std::initializer_list<uint32_t> init) { copy_from_init(init); }
 
-    // Constructor from single value (for now just for debugging purposes, up to
-    // 64 bits)
-    explicit Bit(uint64_t value) {
-        chunks.fill(0);
-        if (num_chunks > 0) {
-            chunks[0] = static_cast<uint32_t>(value);
-        }
-        if (num_chunks > 1) {
-            chunks[1] = static_cast<uint32_t>(value >> 32);
-        }
-        apply_mask();
+    /**
+     * @brief Constructor from a hexadecimal string literal
+     */
+    explicit Bit(const char* hex_string) { parse_hex_string(hex_string); }
+
+    /**
+     * @brief Converting constructor from another Bit vector
+     * This allows initialization from a Bit vectorof a different width, like
+     * Bit<8> result = Bit<9>(...)
+     */
+    template <int M>
+    Bit(const Bit<M>& rhs) {
+        *this = rhs;
     }
 
-    Bit& operator=(bool other) {
-        chunks.fill(0);
-        chunks[0] = (other) ? 1 : 0;
-        apply_mask();
-        return *this;
-    }
-
-    // Assignment for the usual {}, used to modify the value of a bit vector
-    Bit& operator=(std::initializer_list<uint32_t> init) {
-        copy_from_init(init);
-        return *this;
-    }
-
-    // Assignment like Bit<N> = Bit<M>. If M<N then the MSB's are zeroed,
-    // otherwise they are lost.
+    /**
+     * @brief Assignment from another Bit vector
+     * Handles assignment from both same-sized and different-sized Bit
+     * vectors. Truncates if the source is larger, zero-extends if it is
+     * smaller.
+     */
     template <int M>
     Bit& operator=(const Bit<M>& rhs) {
-        chunks.fill(0); // MSB at zero
+        // Clear old data since we don't need it anymore
+        chunks.fill(0);
 
-        // Copy as many chunks as fit
-        constexpr int thisChunks = num_chunks;
-        constexpr int rhsChunks = (M + 31) / 32;
-        constexpr int copyCount =
-            (thisChunks < rhsChunks ? thisChunks : rhsChunks);
+        // computing the smaller of the two chunk counts
+        constexpr int rhs_chunks = (M + 31) / 32;
+        constexpr int chunks_to_copy =
+            num_chunks < rhs_chunks ? num_chunks : rhs_chunks;
 
-        for (int i = 0; i < copyCount; ++i)
+        for (int i = 0; i < chunks_to_copy; ++i) {
             chunks[i] = rhs.chunks[i];
+        }
 
         apply_mask();
+        // returning a reference to this object to allow chaining like a = b = c
         return *this;
     }
 
-    // Arithmetic operators
+    /**
+     * @brief Assignment from a single integral value
+     */
+    template <typename T, typename = std::enable_if_t<std::is_integral_v<T>>>
+    Bit& operator=(T value) {
+        set_value(value);
+        return *this;
+    }
+
+    /**
+     * @brief Equality comparison operator
+     */
     template <int M>
-    Bit<max(N, M) + 1> operator+(const Bit<M>& rhs) const {
-        // We need to know the number of chunks
-        constexpr int lhs_chunks = num_chunks;
-        constexpr int rhs_chunks = (M + 31) / 32;
-        constexpr int res_chunks = ((max(N, M) + 1) + 31) / 32;
-
-        Bit<max(N, M) + 1> result;
-        uint64_t carry = 0;
-
-        // Now we can loop over the maximum number of chunks in the two
-        // operands.
-        for (int i = 0; i < res_chunks; ++i) {
-            uint64_t lhs_val = (i < lhs_chunks) ? chunks[i] : 0;
-            uint64_t rhs_val = (i < rhs_chunks) ? rhs.chunks[i] : 0;
-            uint64_t sum = lhs_val + rhs_val + carry;
-            result.chunks[i] = static_cast<uint32_t>(sum);
-            carry = sum >> 32;
-        }
-
-        result.apply_mask();
-        return result;
-    }
-
-    template <int M>
-    Bit<max(N, M)> operator-(const Bit<M>& rhs) const {
-        // I'm assuming Bit<max(N, M)> as the output length because
-        // in the worst case i'm doing like x-0 so the result is x
-        Bit<max(N, M)> result;
-
-        // Just as before, we start by extracting the number of chunks
-        constexpr int lhs_chunks = num_chunks;            // N
-        constexpr int rhs_chunks = (M + 31) / 32;         // M
-        constexpr int res_chunks = (max(N, M) + 31) / 32; // res
-
-        uint64_t borrow = 0;
-
-        // Chunk by chunk, up to res_chunks
-        for (int i = 0; i < res_chunks; ++i) {
-            uint64_t lhs_val = (i < lhs_chunks) ? chunks[i] : 0;
-            uint64_t rhs_val = (i < rhs_chunks) ? rhs.chunks[i] : 0;
-
-            uint64_t diff = lhs_val - rhs_val - borrow;
-            result.chunks[i] = static_cast<uint32_t>(diff);
-
-            // Se l'MSB è 1 quando shifto 64 >> 32 allora diff ha borrow out
-            borrow = (diff >> 32) & 1;
-        }
-
-        // Qua voglio forzare il risultato ad avere max(N,M) bits
-        result.apply_mask();
-        return result;
-    }
-
-    template <int M>
-    Bit<N + M> operator*(const Bit<M>& rhs) const {
-        Bit<N + M> result;
-        for (int i = 0; i < num_chunks; ++i) {
-            uint64_t carry = 0;
-            for (int j = 0; j < rhs.num_chunks; ++j) {
-                if (i + j >= result.num_chunks)
-                    break;
-                uint64_t product =
-                    static_cast<uint64_t>(chunks[i]) * rhs.chunks[j];
-                uint64_t temp = static_cast<uint64_t>(result.chunks[i + j]) +
-                                (product & 0xFFFFFFFF) + carry;
-                result.chunks[i + j] = static_cast<uint32_t>(temp);
-                carry = (product >> 32) + (temp >> 32);
-            }
-            if (i + rhs.num_chunks < result.num_chunks) {
-                result.chunks[i + rhs.num_chunks] +=
-                    static_cast<uint32_t>(carry);
-            }
-        }
-        result.apply_mask();
-        return result;
-    }
-
-    // Power function with result capped at 128 bits
-    // TODO: parlane con Pietro, ok che è O(log n) però jesus, rimuovendo la
-    // static_assert potrei usare l'operatore * che già c'è
-    template <int M>
-    Bit<((N * M) > 128 ? 128 : (N * M))> pow(const Bit<M>& exponent) const {
-        constexpr int ResultBits = ((N * M) > 128) ? 128 : (N * M);
-
-        if (*this == Bit(0) && exponent == Bit<M>(0)) {
-            return Bit<ResultBits>(1);
-        }
-
-        Bit<ResultBits> result(1);
-        Bit<ResultBits> base;
-        base = *this; // Use assignment operator for conversion
-        Bit<M> exp = exponent;
-
-        // Early exit if base is zero
-        if (base == Bit<ResultBits>(0)) {
-            return Bit<ResultBits>(0);
-        }
-
-        while (exp != Bit<M>(0)) {
-            if ((exp.chunks[0] & 1) != 0) {
-                // Manual multiplication: result = result * base
-                Bit<ResultBits> temp;
-                for (int i = 0; i < result.num_chunks; ++i) {
-                    uint64_t carry = 0;
-                    for (int j = 0; j < base.num_chunks; ++j) {
-                        if (i + j >= temp.num_chunks)
-                            break;
-                        uint64_t product =
-                            static_cast<uint64_t>(result.chunks[i]) *
-                            base.chunks[j];
-                        uint64_t sum =
-                            static_cast<uint64_t>(temp.chunks[i + j]) +
-                            (product & 0xFFFFFFFF) + carry;
-                        temp.chunks[i + j] = static_cast<uint32_t>(sum);
-                        carry = (product >> 32) + (sum >> 32);
-                    }
-                    if (i + base.num_chunks < temp.num_chunks && carry > 0) {
-                        temp.chunks[i + base.num_chunks] +=
-                            static_cast<uint32_t>(carry);
-                    }
-                }
-                temp.apply_mask();
-                result = temp;
-            }
-
-            // Manual multiplication: base = base * base
-            Bit<ResultBits> squared;
-            for (int i = 0; i < base.num_chunks; ++i) {
-                uint64_t carry = 0;
-                for (int j = 0; j < base.num_chunks; ++j) {
-                    if (i + j >= squared.num_chunks)
-                        break;
-                    uint64_t product =
-                        static_cast<uint64_t>(base.chunks[i]) * base.chunks[j];
-                    uint64_t sum =
-                        static_cast<uint64_t>(squared.chunks[i + j]) +
-                        (product & 0xFFFFFFFF) + carry;
-                    squared.chunks[i + j] = static_cast<uint32_t>(sum);
-                    carry = (product >> 32) + (sum >> 32);
-                }
-                if (i + base.num_chunks < squared.num_chunks && carry > 0) {
-                    squared.chunks[i + base.num_chunks] +=
-                        static_cast<uint32_t>(carry);
-                }
-            }
-            squared.apply_mask();
-            base = squared;
-
-            exp = exp >> 1;
-
-            // Short-circuit if base becomes zero
-            if (base == Bit<ResultBits>(0))
-                break;
-        }
-        return result;
-    }
-
-    // Division --> return X for division by zero to match Verilog behavior
-    Bit operator/(const Bit& divisor) const {
-        // return X for division by zero
-        if (divisor == Bit(0)) {
-            Bit result;
-            for (int i = 0; i < num_chunks; ++i) {
-                result.chunks[i] = mask[i];
-            }
-            return result;
-        }
-
-        Bit dividend = *this;
-        Bit quotient;
-        Bit remainder;
-
-        for (int i = N - 1; i >= 0; --i) {
-            remainder = remainder << 1;
-            remainder.chunks[0] |= (dividend.chunks[i / 32] >> (i % 32)) & 1;
-
-            if (remainder >= divisor) {
-                remainder = remainder - divisor;
-                quotient.chunks[i / 32] |= 1 << (i % 32);
-            }
-        }
-        quotient.apply_mask();
-        return quotient;
-    }
-
-    Bit operator%(const Bit& divisor) const {
-        // Return X (all bits set) for modulo by zero
-        if (divisor == Bit(0)) {
-            Bit result;
-            for (int i = 0; i < num_chunks; ++i) {
-                result.chunks[i] = mask[i];
-            }
-            return result;
-        }
-
-        Bit remainder;
-
-        for (int i = N - 1; i >= 0; --i) {
-            remainder = remainder << 1;
-            remainder.chunks[0] |= (chunks[i / 32] >> (i % 32)) & 1;
-            if (remainder >= divisor) {
-                remainder = remainder - divisor;
-            }
-        }
-        remainder.apply_mask();
-        return remainder;
-    }
-
-    bool operator<(const Bit& rhs) const {
-        // Da MSB a LSB
-        for (int i = num_chunks - 1; i >= 0; --i) {
-            if (chunks[i] < rhs.chunks[i])
-                return true;
-            if (chunks[i] > rhs.chunks[i])
-                return false;
-        }
-        return false; // equal
-    }
-
-    template <int M>
-    bool operator<(const Bit<M>& rhs) const {
-        constexpr int lhs_chunks = num_chunks;
-        constexpr int rhs_chunks = (M + 31) / 32;
-        constexpr int max_chunks =
-            (lhs_chunks > rhs_chunks) ? lhs_chunks : rhs_chunks;
-
-        for (int i = max_chunks - 1; i >= 0; --i) {
-            uint32_t lhs_chunk = (i < lhs_chunks) ? chunks[i] : 0;
-            uint32_t rhs_chunk = (i < rhs_chunks) ? rhs.chunks[i] : 0;
-
-            if (lhs_chunk < rhs_chunk)
-                return true;
-            if (lhs_chunk > rhs_chunk)
-                return false;
-        }
-        return false; // Equal
-    }
-
-    bool operator>(const Bit& rhs) const { return rhs < *this; }
-    bool operator<=(const Bit& rhs) const { return !(*this > rhs); }
-    bool operator>=(const Bit& rhs) const { return !(*this < rhs); }
-
-    // And
-    Bit operator&(const Bit& rhs) const {
-        Bit result;
-        for (int i = 0; i < num_chunks; ++i)
-            result.chunks[i] = chunks[i] & rhs.chunks[i];
-        result.apply_mask();
-        return result;
-    }
-
-    // Or
-    Bit operator|(const Bit& rhs) const {
-        Bit result;
-        for (int i = 0; i < num_chunks; ++i)
-            result.chunks[i] = chunks[i] | rhs.chunks[i];
-        result.apply_mask();
-        return result;
-    }
-
-    // Xor
-    Bit operator^(const Bit& rhs) const {
-        Bit result;
-        for (int i = 0; i < num_chunks; ++i)
-            result.chunks[i] = chunks[i] ^ rhs.chunks[i];
-        result.apply_mask();
-        return result;
-    }
-
-    // Not
-    Bit operator~() const {
-        Bit result;
-        for (int i = 0; i < num_chunks; ++i)
-            result.chunks[i] = ~chunks[i];
-        result.apply_mask();
-        return result;
-    }
-
-    // Shift operators
-    Bit operator<<(int shift) const {
-        Bit result;
-        if (shift >= N)
-            return result;
-
-        int chunk_shift = shift / 32;
-        int bit_shift = shift % 32;
-
-        for (int i = num_chunks - 1; i >= 0; --i) {
-            if (i - chunk_shift >= 0) {
-                result.chunks[i] = chunks[i - chunk_shift] << bit_shift;
-                if (bit_shift > 0 && i - chunk_shift - 1 >= 0)
-                    result.chunks[i] |=
-                        chunks[i - chunk_shift - 1] >> (32 - bit_shift);
-            }
-        }
-        result.apply_mask();
-        return result;
-    }
-
-    Bit operator>>(int shift) const {
-        Bit result;
-        if (shift >= N)
-            return result;
-
-        int chunk_shift = shift / 32;
-        int bit_shift = shift % 32;
-
-        for (int i = 0; i < num_chunks; ++i) {
-            if (i + chunk_shift < num_chunks) {
-                result.chunks[i] = chunks[i + chunk_shift] >> bit_shift;
-                if (bit_shift > 0 && i + chunk_shift + 1 < num_chunks)
-                    result.chunks[i] |= chunks[i + chunk_shift + 1]
-                                        << (32 - bit_shift);
-            }
-        }
-        result.apply_mask();
-        return result;
-    }
-
-    // Comparison operators
-    bool operator==(const int& rhs) const {
-        return (*this == Bit<N>(rhs));
-    }
-
-    bool operator!=(const int& rhs) const {
-        return !(*this == rhs);
-    }
-
-    bool operator==(const Bit& rhs) const {
-        for (int i = 0; i < num_chunks; ++i)
-            if (chunks[i] != rhs.chunks[i])
-                return false;
-        return true;
-    }
-
-    template <int M>
-    bool operator==(const Bit<M>& rhs) const {
+    Bit<1> operator==(const Bit<M>& rhs) const {
         constexpr int lhs_chunks = num_chunks;
         constexpr int rhs_chunks = (M + 31) / 32;
         constexpr int max_chunks =
@@ -457,26 +140,704 @@ public:
         for (int i = 0; i < max_chunks; ++i) {
             uint32_t lhs_chunk = (i < lhs_chunks) ? chunks[i] : 0;
             uint32_t rhs_chunk = (i < rhs_chunks) ? rhs.chunks[i] : 0;
-            if (lhs_chunk != rhs_chunk)
-                return false;
+            if (lhs_chunk != rhs_chunk) {
+                return Bit<1>(0);
+            }
         }
-        return true;
+        return Bit<1>(1); // all chunks were identical, return true
     }
 
-    bool logic_negation() const {
-        return !(bool(this));
-    }
-
-    bool operator!=(const Bit& rhs) const { return !(*this == rhs); }
-
+    /**
+     * @brief Inequality comparison operator
+     */
     template <int M>
-    bool operator!=(const Bit<M>& rhs) const {
+    Bit<1> operator!=(const Bit<M>& rhs) const {
         return !(*this == rhs);
     }
 
-    operator bool() const {
-        for (auto &chunk : chunks) {
-            if (chunk != 0) {
+    /**
+     * @brief Prefix increment (++a)
+     */
+    Bit<N>& operator++() {
+        *this += Bit<1>(1);
+        return *this; // return the new incremented value
+    }
+
+    /**
+     * @brief postfix increment (a++)
+     * I'm using int as a dummy parameter to distinguish the signature
+     */
+    Bit<N> operator++(int) {
+        Bit<N> temp = *this;
+        *this += Bit<1>(1);
+        return temp;
+    }
+
+    /**
+     * @brief prefix decrement (--a)
+     */
+    Bit<N>& operator--() {
+        *this -= Bit<1>(1);
+        return *this;
+    }
+
+    /**
+     * @brief postfix decrement (a--)
+     */
+    Bit<N> operator--(int) {
+        Bit<N> temp = *this;
+        *this -= Bit<1>(1);
+        return temp;
+    }
+
+    /**
+     * @brief mimics the Verilog 'inside' operator to check for set membership
+     * @param value_to_check The value to look for
+     * @param values_in_set A variable number of values that form the set
+     * @return Bit<1>(1) if the value is in the set, Bit<1>(0) otherwise
+     */
+    template <int N_Check, typename... T_Set>
+    static Bit<1> inside(const Bit<N_Check>& value_to_check,
+                         const T_Set&... values_in_set) {
+        bool is_inside = false;
+        // è una fold expression, in teoria solo c++17, potenzialmente da
+        // cambiare
+        // OR sul result di ogni equality check
+        ((is_inside = is_inside || (value_to_check == values_in_set)), ...);
+        return Bit<1>(is_inside);
+    }
+
+    /**
+     * @brief Concatenates multiple Bit vectors into a single, wider Bit vector
+     * Verilog equivalent: {arg1, arg2, ...}
+     */
+    template <typename... Args>
+    static auto concat(const Args&... args) {
+        constexpr int FINAL_WIDTH = (0 + ... + std::decay_t<Args>::width);
+        static_assert(FINAL_WIDTH <= 128,
+                      "Concatenation result exceeds 128 bits");
+
+        Bit<FINAL_WIDTH> result;
+        int current_shift = FINAL_WIDTH; // Start shift from the top (MSB)
+
+        // lambda to place each argument
+        auto process = [&](const auto& arg) {
+            constexpr int arg_width = std::decay_t<decltype(arg)>::width;
+            current_shift -= arg_width; // Move the shift position down
+            Bit<FINAL_WIDTH> temp(arg);
+            result |= (temp << current_shift); // Place the argument
+        };
+
+        (process(args), ...); // Process from left-to-right (MSB to LSB)
+        return result;
+    }
+
+    /**
+     * @brief Replicates a Bit vector a specified number of times
+     * Verilog equivalent: {N{val}}
+     */
+    template <int REPLICATION_COUNT, int M>
+    static auto replicate(const Bit<M>& val) {
+        constexpr int FINAL_WIDTH = REPLICATION_COUNT * M;
+        static_assert(FINAL_WIDTH > 0,
+                      "Replication must result in a positive width.");
+        static_assert(FINAL_WIDTH <= 128,
+                      "Replication result exceeds 128 bits");
+
+        Bit<FINAL_WIDTH> result;
+
+        for (int i = 0; i < REPLICATION_COUNT; ++i) {
+            result |= (Bit<FINAL_WIDTH>(val) << (i * M));
+        }
+        return result;
+    }
+
+    /**
+     * @brief Addition operator
+     * Adds two Bit vectors, returning a new vector with the result.
+     * The result is one bit wider to accommodate a carry-out, UNLESS
+     * that would exceed the 128-bit limit, in which case the carry is
+     * discarded.
+     */
+    template <int M>
+    auto operator+(const Bit<M>& rhs) const
+        -> Bit<max(N, M) < 128 ? max(N, M) + 1 : 128> {
+        // computing the result width
+        constexpr int RESULT_BITS = (max(N, M) < 128) ? (max(N, M) + 1) : 128;
+        Bit<RESULT_BITS> result;
+
+        constexpr int rhs_chunks = (M + 31) / 32;
+        constexpr int result_chunks = (RESULT_BITS + 31) / 32;
+
+        uint64_t carry = 0;
+        // Looping through the maximum number of chunks needed for the result
+        for (int i = 0; i < result_chunks; ++i) {
+            uint64_t lhs_val = (i < num_chunks) ? chunks[i] : 0;
+            uint64_t rhs_val = (i < rhs_chunks) ? rhs.chunks[i] : 0;
+            uint64_t sum = lhs_val + rhs_val + carry;
+            // the lower 32 bits of the sum are the chunk for our result
+            result.chunks[i] = static_cast<uint32_t>(sum);
+            // right shift to get the eventual carry bit
+            carry = sum >> 32;
+        }
+        return result;
+    }
+
+    /**
+     * @brief Subtraction operator.
+     * Subtracts two Bit vectors, returning a new vector with the result.
+     * The result width is the same as the wider of the two operands.
+     */
+    template <int M>
+    auto operator-(const Bit<M>& rhs) const -> Bit<max(N, M)> {
+        constexpr int RESULT_BITS = max(N, M);
+        Bit<RESULT_BITS> result;
+
+        // temporary operands with the final result width
+        const Bit<RESULT_BITS> lhs_promoted(*this);
+        const Bit<RESULT_BITS> rhs_promoted(rhs);
+
+        constexpr int result_chunks = (RESULT_BITS + 31) / 32;
+        uint64_t borrow = 0;
+
+        for (int i = 0; i < result_chunks; ++i) {
+            uint64_t lhs_val = lhs_promoted.chunks[i];
+            uint64_t rhs_val = rhs_promoted.chunks[i];
+
+            uint64_t diff = lhs_val - rhs_val - borrow;
+            result.chunks[i] = static_cast<uint32_t>(diff);
+            borrow = (lhs_val < rhs_val + borrow) ? 1 : 0;
+        }
+
+        return result;
+    }
+
+    /**
+     * @brief Multiplication operator.
+     * The result width is N + M, capped at 128 bits to avoid violating
+     * the class assertion. Any overflow beyond 128 bits is discarded.
+     */
+    template <int M>
+    auto operator*(const Bit<M>& rhs) const
+        -> Bit<(N + M > 128) ? 128 : (N + M)> {
+        constexpr int IDEAL_BITS = N + M;
+        constexpr int RESULT_BITS = (IDEAL_BITS > 128) ? 128 : IDEAL_BITS;
+
+        // zero initialized
+        Bit<RESULT_BITS> result;
+
+        constexpr int rhs_chunks = (M + 31) / 32;
+
+        // multiplication chunk by chunk
+        for (int j = 0; j < rhs_chunks; ++j) {
+            uint64_t carry = 0;
+            for (int i = 0; i < num_chunks; ++i) {
+                // only proceed if the result chunk is within our
+                // capped Bit object
+                if (i + j < result.num_chunks) {
+                    uint64_t product =
+                        static_cast<uint64_t>(chunks[i]) * rhs.chunks[j];
+                    uint64_t sum = static_cast<uint64_t>(result.chunks[i + j]) +
+                                   product + carry;
+
+                    result.chunks[i + j] = static_cast<uint32_t>(sum);
+                    carry = sum >> 32;
+                }
+            }
+            // propagating the final carry if it fits in the result
+            if (j + num_chunks < result.num_chunks) {
+                result.chunks[j + num_chunks] += static_cast<uint32_t>(carry);
+            }
+        }
+
+        result.apply_mask();
+        return result;
+    }
+
+    /**
+     * @brief Less-than comparison operator
+     */
+    template <int M>
+    Bit<1> operator<(const Bit<M>& rhs) const {
+        constexpr int lhs_chunks = num_chunks;
+        constexpr int rhs_chunks = (M + 31) / 32;
+        constexpr int max_chunks =
+            (lhs_chunks > rhs_chunks) ? lhs_chunks : rhs_chunks;
+
+        // comparison starting from the msb chunk
+        for (int i = max_chunks - 1; i >= 0; --i) {
+            // missing chunks in shorter numbers = zero
+            uint32_t lhs_chunk = (i < lhs_chunks) ? chunks[i] : 0;
+            uint32_t rhs_chunk = (i < rhs_chunks) ? rhs.chunks[i] : 0;
+
+            if (lhs_chunk < rhs_chunk) {
+                return Bit<1>(1);
+            }
+            if (lhs_chunk > rhs_chunk) {
+                return Bit<1>(0);
+            }
+        }
+        // all chunks =
+        return Bit<1>(0);
+    }
+
+    /**
+     * @brief Greater-than comparison operator
+     */
+    template <int M>
+    Bit<1> operator>(const Bit<M>& rhs) const {
+        return rhs < *this;
+    }
+
+    /**
+     * @brief Less-than-or-equal-to comparison operator
+     */
+    template <int M>
+    Bit<1> operator<=(const Bit<M>& rhs) const {
+        return !(*this > rhs);
+    }
+
+    /**
+     * @brief greater-than-or-equal-to comparison operator
+     */
+    template <int M>
+    Bit<1> operator>=(const Bit<M>& rhs) const {
+        return !(*this < rhs);
+    }
+
+    /**
+     * @brief logical left shift operator, filling with zeros
+     */
+    Bit<N> operator<<(int shift) const {
+        Bit<N> result;
+
+        if (shift <= 0) {
+            return *this; // no shift
+        }
+        if (shift >= N) {
+            return result; // shifting by N or more results in zero
+        }
+
+        int chunk_shift = shift / 32;
+        int bit_shift = shift % 32;
+
+        for (int i = num_chunks - 1; i >= chunk_shift; --i) {
+            // the main part of the new chunk comes from the source chunk
+            // shifted left
+            result.chunks[i] = chunks[i - chunk_shift] << bit_shift;
+
+            // if there's a bit_shift, we also need to bring in the high bits
+            // from the previous source chunk.
+            if (bit_shift > 0 && i > chunk_shift) {
+                result.chunks[i] |=
+                    chunks[i - chunk_shift - 1] >> (32 - bit_shift);
+            }
+        }
+
+        result.apply_mask();
+        return result;
+    }
+
+    /**
+     * @brief logical left shift by another Bit vector (aka Verilog shift
+     * of a variable amount)
+     */
+    template <int M>
+    Bit<N> operator<<(const Bit<M>& shift_amount) const {
+        uint64_t shift_val = static_cast<uint64_t>(shift_amount);
+        return *this << shift_val;
+    }
+
+    /**
+     * @brief Logical right shift operator, filling with zeros
+     */
+    Bit<N> operator>>(int shift) const {
+        Bit<N> result; // zero-initialized by default
+
+        if (shift <= 0) {
+            return *this; // no shift or invalid shift
+        }
+        if (shift >= N) {
+            return result; // shifting by N or more results in zero
+        }
+
+        int chunk_shift = shift / 32;
+        int bit_shift = shift % 32;
+
+        for (int i = 0; i < num_chunks - chunk_shift; ++i) {
+            // the main part of the new chunk comes from the source chunk,
+            // shifted right
+            result.chunks[i] = chunks[i + chunk_shift] >> bit_shift;
+
+            // ff there's a bit_shift, we also need to bring in the low bits
+            // from the next source chunk
+            if (bit_shift > 0 && i + chunk_shift + 1 < num_chunks) {
+                result.chunks[i] |= chunks[i + chunk_shift + 1]
+                                    << (32 - bit_shift);
+            }
+        }
+
+        result.apply_mask();
+        return result;
+    }
+
+    template <int M>
+    Bit<N> operator>>(const Bit<M>& shift_amount) const {
+        uint64_t shift_val = static_cast<uint64_t>(shift_amount);
+        return *this >> shift_val;
+    }
+
+    /**
+     * @brief Logical NOT operator
+     * Returns Bit<1>(1) if the entire vector is zero, Bit<1>(0) otherwise
+     */
+    Bit<1> operator!() const {
+        // Checking if any bit in any chunk is non-zero
+        for (int i = 0; i < num_chunks; ++i) {
+            if (chunks[i] != 0) {
+                return Bit<1>(0); // Vector is not zero, so logical NOT is false
+            }
+        }
+        // If all chunks are zero, logical NOT is true
+        return Bit<1>(1);
+    }
+
+    /**
+     * @brief Bitwise AND operator
+     */
+    template <int M>
+    auto operator&(const Bit<M>& rhs) const -> Bit<max(N, M)> {
+        constexpr int RESULT_BITS = max(N, M);
+        Bit<RESULT_BITS> result;
+
+        constexpr int rhs_chunks = (M + 31) / 32;
+        constexpr int result_chunks = (RESULT_BITS + 31) / 32;
+
+        for (int i = 0; i < result_chunks; ++i) {
+            // treating missing chunks in shorter numbers as zero for the AND
+            // operation
+            uint32_t lhs_chunk = (i < num_chunks) ? chunks[i] : 0;
+            uint32_t rhs_chunk = (i < rhs_chunks) ? rhs.chunks[i] : 0;
+            result.chunks[i] = lhs_chunk & rhs_chunk;
+        }
+
+        result.apply_mask();
+        return result;
+    }
+
+    /**
+     * @brief Bitwise OR operator
+     */
+    template <int M>
+    auto operator|(const Bit<M>& rhs) const -> Bit<max(N, M)> {
+        constexpr int RESULT_BITS = max(N, M);
+        Bit<RESULT_BITS> result;
+
+        constexpr int rhs_chunks = (M + 31) / 32;
+        constexpr int result_chunks = (RESULT_BITS + 31) / 32;
+
+        for (int i = 0; i < result_chunks; ++i) {
+            // treating missing chunks in shorter numbers as zero for the OR
+            // operation
+            uint32_t lhs_chunk = (i < num_chunks) ? chunks[i] : 0;
+            uint32_t rhs_chunk = (i < rhs_chunks) ? rhs.chunks[i] : 0;
+            result.chunks[i] = lhs_chunk | rhs_chunk;
+        }
+
+        result.apply_mask();
+        return result;
+    }
+
+    /**
+     * @brief Bitwise XOR operator
+     */
+    template <int M>
+    auto operator^(const Bit<M>& rhs) const -> Bit<max(N, M)> {
+        constexpr int RESULT_BITS = max(N, M);
+        Bit<RESULT_BITS> result;
+
+        constexpr int rhs_chunks = (M + 31) / 32;
+        constexpr int result_chunks = (RESULT_BITS + 31) / 32;
+
+        for (int i = 0; i < result_chunks; ++i) {
+            // treating missing chunks in shorter numbers as zero for the XOR
+            // operation
+            uint32_t lhs_chunk = (i < num_chunks) ? chunks[i] : 0;
+            uint32_t rhs_chunk = (i < rhs_chunks) ? rhs.chunks[i] : 0;
+            result.chunks[i] = lhs_chunk ^ rhs_chunk;
+        }
+
+        result.apply_mask();
+        return result;
+    }
+
+    /**
+     * @brief Logical AND operator
+     * Treats the entire vector as a single boolean value (true if non-zero)
+     */
+    template <int M>
+    Bit<1> operator&&(const Bit<M>& rhs) const {
+        // i'm using the explicit bool conversion to determine if each vector
+        // isnon-zero.
+        bool lhs_is_true = static_cast<bool>(*this);
+        bool rhs_is_true = static_cast<bool>(rhs);
+
+        return Bit<1>(lhs_is_true && rhs_is_true);
+    }
+
+    /**
+     * @brief Logical OR operator
+     * Treats the entire vector as a single boolean value (true if non-zero)
+     */
+    template <int M>
+    Bit<1> operator||(const Bit<M>& rhs) const {
+        bool lhs_is_true = static_cast<bool>(*this);
+        bool rhs_is_true = static_cast<bool>(rhs);
+
+        return Bit<1>(lhs_is_true || rhs_is_true);
+    }
+
+    /**
+     * @brief Performs a logical implication (if-then)
+     * Treats the entire vector as a single boolean value.
+     * Logically equivalent to !(*this) || rhs.
+     * @return Bit<1>(1) for true, Bit<1>(0) for false.
+     */
+    template <int M>
+    Bit<1> logical_implication(const Bit<M>& rhs) const {
+        return !(*this) || rhs;
+    }
+
+    /**
+     * @brief Performs a logical equivalence (if-and-only-if).
+     * Treats the entire vector as a single boolean value.
+     * @return Bit<1>(1) for true, Bit<1>(0) for false.
+     */
+    template <int M>
+    Bit<1> logical_equivalence(const Bit<M>& rhs) const {
+        // implementing (A -> B) && (B -> A)
+        return this->logical_implication(rhs) && rhs.logical_implication(*this);
+    }
+
+    /**
+     * @brief Mimics Verilog conditional -ternary operator.
+     */
+    template <int Cond_N, int W1, int W2>
+    static Bit<max(W1, W2)> conditional(const Bit<Cond_N>& cond,
+                                        const Bit<W1>& true_val,
+                                        const Bit<W2>& false_val) {
+        if (static_cast<bool>(cond)) {
+            return true_val;
+        } else {
+            return false_val;
+        }
+    }
+
+    /**
+     * @brief unary plus (+a)
+     */
+    Bit<N> operator+() const {
+        return *this; // returns a copy of the object unchanged
+    }
+
+    /**
+     * @brief unary minus (-a)
+     */
+    Bit<N> operator-() const {
+        // 2s complement is (~a + 1)
+        return ~(*this) + Bit<1>(1);
+    }
+
+    /**
+     * @brief Unary bitwise NOT operator
+     */
+    Bit<N> operator~() const {
+        Bit<N> result;
+        for (int i = 0; i < num_chunks; ++i) {
+            result.chunks[i] = ~chunks[i];
+        }
+        result.apply_mask();
+        return result;
+    }
+
+    /**
+     * @brief Bitwise XNOR operator function
+     */
+    template <int M>
+    auto xnor(const Bit<M>& rhs) const -> Bit<max(N, M)> {
+        return ~(*this ^ rhs);
+    }
+
+    /**
+     * @brief Performs a reduction AND on the vector
+     * @return Bit<1>(1) if all bits are 1, Bit<1>(0) otherwise
+     */
+    Bit<1> reduce_and() const {
+        // creating a temporary vector with all 1s
+        Bit<N> all_ones;
+        all_ones.chunks.fill(0xFFFFFFFF);
+        all_ones.apply_mask(); // mask it to the correct width N
+
+        // The reduction AND is 1 sse the number is equal to all ones.
+        return (*this == all_ones);
+    }
+
+    /**
+     * @brief Performs a reduction OR on the vector
+     * @return Bit<1>(1) if any bit is 1, Bit<1>(0) otherwise
+     */
+    Bit<1> reduce_or() const {
+        // The reduction OR is 1 if the number is non-zero
+        return Bit<1>(static_cast<bool>(*this));
+    }
+
+    /**
+     * @brief Performs a reduction XOR on the vector
+     * @return Bit<1>(1) if there is an odd number of set bits, Bit<1>(0)
+     * otherwise
+     */
+    Bit<1> reduce_xor() const {
+        int total_set_bits = 0;
+        for (int i = 0; i < num_chunks; ++i) {
+            uint32_t chunk = chunks[i];
+            // there is the __popcount intrisic for clang
+            // TODO: search for the gpu equivalent
+            while (chunk > 0) {
+                chunk &= (chunk - 1);
+                total_set_bits++;
+            }
+        }
+        // result is 1 if the total number of set bits is odd
+        return Bit<1>(total_set_bits % 2);
+    }
+
+    /**
+     * @brief Performs a reduction NAND on the vector
+     */
+    Bit<1> reduce_nand() const { return !this->reduce_and(); }
+
+    /**
+     * @brief Performs a reduction NOR on the vector
+     */
+    Bit<1> reduce_nor() const { return !this->reduce_or(); }
+
+    /**
+     * @brief Performs a reduction XNOR on the vector
+     */
+    Bit<1> reduce_xnor() const { return !this->reduce_xor(); }
+
+    /**
+     * @brief Addition assignment operator
+     */
+    template <int M>
+    Bit<N>& operator+=(const Bit<M>& rhs) {
+        *this = *this + rhs;
+        return *this;
+    }
+
+    /**
+     * @brief Subtraction assignment operator
+     */
+    template <int M>
+    Bit<N>& operator-=(const Bit<M>& rhs) {
+        *this = *this - rhs;
+        return *this;
+    }
+
+    /**
+     * @brief Multiplication assignment operator
+     */
+    template <int M>
+    Bit<N>& operator*=(const Bit<M>& rhs) {
+        *this = *this * rhs;
+        return *this;
+    }
+
+    /**
+     * @brief Division assignment operator
+     */
+    template <int M>
+    Bit<N>& operator/=(const Bit<M>& rhs) {
+        *this = *this / rhs;
+        return *this;
+    }
+
+    /**
+     * @brief Modulo assignment operator
+     */
+    template <int M>
+    Bit<N>& operator%=(const Bit<M>& rhs) {
+        *this = *this % rhs;
+        return *this;
+    }
+
+    /**
+     * @brief Bitwise AND assignment operator
+     */
+    template <int M>
+    Bit<N>& operator&=(const Bit<M>& rhs) {
+        *this = *this & rhs;
+        return *this;
+    }
+
+    /**
+     * @brief Bitwise OR assignment operator
+     */
+    template <int M>
+    Bit<N>& operator|=(const Bit<M>& rhs) {
+        *this = *this | rhs;
+        return *this;
+    }
+
+    /**
+     * @brief Bitwise XOR assignment operator
+     */
+    template <int M>
+    Bit<N>& operator^=(const Bit<M>& rhs) {
+        *this = *this ^ rhs;
+        return *this;
+    }
+
+    /**
+     * @brief Logical right shift assignment operator
+     */
+    template <int M>
+    Bit<N>& operator>>=(const Bit<M>& rhs) {
+        *this = *this >> rhs;
+        return *this;
+    }
+
+    /**
+     * @brief Logical left shift assignment operator
+     */
+    template <int M>
+    Bit<N>& operator<<=(const Bit<M>& rhs) {
+        *this = *this << rhs;
+        return *this;
+    }
+
+    explicit operator uint64_t() const {
+        // static_assert(N <= 64, "Bit<N> is too wide to be cast to uint64_t
+        // without data loss.");
+        uint64_t value = 0;
+        if (num_chunks > 0) {
+            value = chunks[0];
+        }
+        if (num_chunks > 1) {
+            value |= static_cast<uint64_t>(chunks[1]) << 32;
+        }
+        // For simplicity, i'm returning the lower 64 bits
+        // A more complex implementation could handle overflow
+        return value;
+    }
+
+    /**
+     * @brief Explicit conversion to bool
+     * returns true if the vector is non-zero, false otherwise
+     */
+    explicit operator bool() const {
+        for (int i = 0; i < num_chunks; ++i) {
+            if (chunks[i] != 0) {
                 return true;
             }
         }
@@ -484,50 +845,123 @@ public:
     }
 
     /**
-        Despite working with chunks of uint32_t, this conversion operator
-        is meant to mimic the behavior of the "$display("%d", vec)" semantics
-        that implicitly convert a vector to a 32/64-bit integer (depending on
-        the specific simulator)
-    */
-    explicit operator uint64_t() const {
-        uint64_t value = 0;
-
-        // Handle up to 64 bits properly
-        if constexpr (N <= 32) {
-            value = chunks[0];
-            // Mask to N bits
-            value &= ((1ULL << N) - 1);
-        } else if constexpr (N < 64) {
-            if (num_chunks >= 2) {
-                value = static_cast<uint64_t>(chunks[1]) << 32;
-                value |= chunks[0];
-            } else {
-                value = chunks[0];
-            }
-            // Mask to N bits
-            value &= ((1ULL << N) - 1);
-        } else {
-            // N >= 64 -> we can just return the lower 64 bits
-            if (num_chunks >= 2) {
-                value = static_cast<uint64_t>(chunks[1]) << 32;
-                value |= chunks[0];
-            } else {
-                value = chunks[0];
-            }
+     * @brief Division operator
+     * The result width is the same as the WIDER of the two operands
+     */
+    template <int M>
+    auto operator/(const Bit<M>& divisor) const -> Bit<max(N, M)> {
+        constexpr int RESULT_BITS = max(N, M);
+        // Division by zero is undefined. In Verilog, it results in all 'X's.
+        // Since we don't have an 'X' state, i'm choosing to return all ones but
+        // you can change this
+        // TODO: confrontati
+        if (divisor == Bit<M>(0)) {
+            Bit<RESULT_BITS> all_ones;
+            all_ones.chunks.fill(0xFFFFFFFF);
+            all_ones.apply_mask();
+            return all_ones;
         }
 
-        return value;
+        // The dividend must be promoted to the result width for the algorithm
+        // to work correctly.
+        const Bit<RESULT_BITS> dividend(*this);
+        Bit<RESULT_BITS> quotient;
+        Bit<RESULT_BITS> remainder;
+
+        // iterate from the most significant bit to the least significant bit.
+        for (int i = RESULT_BITS - 1; i >= 0; --i) {
+            // 1. shift the remainder left by 1.
+            remainder = remainder << 1;
+            // 2. "bring down" the next bit from the dividend and set it as the
+            // LSB of the remainder. Check if the i-th bit of the dividend is 1
+            if ((dividend.chunks[i / 32] >> (i % 32)) & 1) {
+                remainder.chunks[0] |= 1;
+            }
+            // 3. If the remainder is now greater than or equal to the divisor,
+            // we can subtract
+            if (remainder >= divisor) {
+                remainder = remainder - divisor;
+                // set the corresponding bit in the quotient to 1
+                quotient.chunks[i / 32] |= (1U << (i % 32));
+            }
+        }
+        quotient.apply_mask();
+        return quotient;
     }
 
-    // Just for debugging purposes
-    std::string to_string() const {
-        std::string str;
-        for (int i = num_chunks - 1; i >= 0; --i) {
-            char buf[9];
-            snprintf(buf, sizeof(buf), "%08X", chunks[i]);
-            str += buf;
+    /**
+     * @brief Modulo operator
+     * The result width is the same as the DIVISOR (rhs)
+     */
+    template <int M>
+    auto operator%(const Bit<M>& divisor) const -> Bit<N> { // Return Bit<N>
+        if (divisor == Bit<M>(0)) {
+            Bit<N> all_ones; // Create a Bit<N>
+            all_ones.chunks.fill(0xFFFFFFFF);
+            all_ones.apply_mask();
+            return all_ones;
         }
-        return "0x" + str;
+
+        // i'm reusing the division logic to find the remainder.
+        Bit<max(N, M)> dividend(*this);
+        Bit<max(N, M)> remainder;
+
+        for (int i = max(N, M) - 1; i >= 0; --i) {
+            remainder = remainder << 1;
+            if ((dividend.chunks[i / 32] >> (i % 32)) & 1) {
+                remainder.chunks[0] |= 1;
+            }
+            if (remainder >= divisor) {
+                remainder = remainder - divisor;
+            }
+        }
+
+        // The final remainder is cast to the width of the divisor
+        return Bit<M>(remainder);
+    }
+
+    /**
+     * @brief Converts the Bit vector to a hexadecimal string.
+     * Mimics the behavior of Verilog's '$display("%h", ...)' for comparison
+     * @return A std::string containing the hexadecimal representation
+     */
+    // In runtime.hpp, replace your to_string() method with this one.
+    // No other changes are needed.
+    std::string to_string() const {
+        std::stringstream ss;
+        ss << std::hex; // Set the stream to output in hexadecimal format
+
+        // We handle the most significant chunk first, as it may not be full.
+        int msb_chunk_idx = num_chunks - 1;
+
+        // This is the key fix: Apply the mask for the most significant chunk
+        // to ensure we only consider the valid bits for this Bit<N> object.
+        uint32_t msb_val = chunks[msb_chunk_idx] & mask[msb_chunk_idx];
+
+        // Compute how many bits are in the last chunk
+        int bits_in_msb = (N % 32 == 0) ? 32 : (N % 32);
+
+        // Compute the number of hex characters needed for those bits
+        int hex_chars_in_msb = (bits_in_msb + 3) / 4;
+
+        // Print the correctly masked and sized most significant chunk
+        if (hex_chars_in_msb > 0) {
+            ss << std::setw(hex_chars_in_msb) << std::setfill('0') << msb_val;
+        }
+
+        // Print the rest of the chunks (if any) from most to least significant
+        for (int i = msb_chunk_idx - 1; i >= 0; --i) {
+            // Lower chunks are always full, so they are 8 hex characters (32
+            // bits)
+            ss << std::setw(8) << std::setfill('0') << chunks[i];
+        }
+
+        // Handle the case of a zero-width stringstream (e.g. for Bit<0>)
+        if (ss.str().empty()) {
+            return "0";
+        }
+
+        return ss.str();
     }
 
     template <typename FormatContext>
@@ -550,9 +984,137 @@ public:
         return out;
     }
 
-    // Per accedere ai private fields ad es con =
-    template <int M>
-    friend class Bit;
+private:
+    /**
+     * ============ Private helper functions ============
+     */
+    // constructors, assignments or arithmetic operators MUST call
+    // apply_mask() before they finish to clean up the result to
+    // preserve the class invariant
+    void apply_mask() {
+        for (int i = 0; i < num_chunks; ++i)
+            chunks[i] &= mask[i];
+    }
+
+    // Helper for the initializer_list constructor
+    void copy_from_init(std::initializer_list<uint32_t> init) {
+        chunks.fill(0);
+        int i = 0;
+        // Copy values from the list, ensuring we don't overflow our
+        // chunks array
+        for (uint32_t val : init) {
+            if (i >= num_chunks) {
+                break;
+            }
+            chunks[i++] = val;
+        }
+        apply_mask();
+    }
+
+    // Helper function to parse a hex string and populate the chunks.
+    void parse_hex_string(const char* hex_string) {
+        chunks.fill(0); // starting with a clean slate.
+
+        const std::string str(hex_string);
+        size_t start_pos = 0;
+
+        // x or X prefix
+        if (str.length() > 2 && str[0] == '0' &&
+            (str[1] == 'x' || str[1] == 'X')) {
+            start_pos = 2;
+        }
+
+        int chunk_idx = 0;
+        int bits_in_chunk = 0;
+
+        // parsing from lsb to msb
+        for (int i = str.length() - 1; i >= static_cast<int>(start_pos); --i) {
+            char c = str[i];
+            uint32_t val = 0;
+
+            // Convert hex character to its 4-bit integer value
+            if (c >= '0' && c <= '9') {
+                val = c - '0';
+            } else if (c >= 'a' && c <= 'f') {
+                val = 10 + (c - 'a');
+            } else if (c >= 'A' && c <= 'F') {
+                val = 10 + (c - 'A');
+            } else {
+                // ignoring invalid chars
+                // TODO: some exception?
+                continue;
+            }
+
+            // Place the 4-bit value into the current chunk at the correct
+            // position
+            chunks[chunk_idx] |= (val << bits_in_chunk);
+            bits_in_chunk += 4;
+
+            // If the current chunk is full (32 bits), move to the next
+            // one
+            if (bits_in_chunk == 32) {
+                chunk_idx++;
+                bits_in_chunk = 0;
+                // Stop if we have filled all the chunks our Bit<N> can
+                // hold
+                if (chunk_idx >= num_chunks) {
+                    break;
+                }
+            }
+        }
+
+        // ensuring the final chunk is properly masked
+        apply_mask();
+    }
+
+    // Helper to set the value from a integer type
+    template <typename T>
+    void set_value(T value) {
+        static_assert(std::is_integral_v<T>,
+                      "Input value must be an integral type.");
+
+        // cast of the input to 64 to make the shift safe
+        uint64_t temp_val = value;
+
+        chunks.fill(0);
+        for (int i = 0; i < num_chunks && temp_val != 0; ++i) {
+            chunks[i] = static_cast<uint32_t>(temp_val);
+            temp_val >>= 32;
+        }
+        apply_mask();
+    }
+
+    /**
+     * ============ Private constants & mask generation ============
+     */
+    // Number of chunks for the bit vector storage
+    static constexpr int num_chunks = (N + 31) / 32;
+
+    // The mask computation is static since the mask is shared by all
+    // the objects with the same Bit<N> width
+    static constexpr std::array<uint32_t, num_chunks> compute_mask() {
+        // result accumulator
+        std::array<uint32_t, num_chunks> mask{};
+        // chunk by chunk
+        for (int i = 0; i < num_chunks; ++i) {
+            // msb chunk discriminator
+            if (i == num_chunks - 1 && N % 32 != 0) {
+                // N % 32 returns how many bits are used in the final
+                // chunk 1U << n_bits moves a 1 left by n_bits, then by
+                // doing -1 we flip all the bits to the rhs and obtain
+                // the mask
+                mask[i] = (1U << (N % 32)) - 1;
+            } else {
+                // full chunk case
+                mask[i] = 0xFFFFFFFF;
+            }
+        }
+        return mask;
+    }
+    static constexpr std::array<uint32_t, num_chunks> mask = compute_mask();
+
+    // ============ Data storage ============
+    std::array<uint32_t, num_chunks> chunks{};
 };
 
 template <int N>
@@ -567,3 +1129,4 @@ struct fmt::formatter<Bit<N>> {
         return Bit<N>::format(n, ctx);
     }
 };
+

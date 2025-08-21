@@ -17,6 +17,8 @@ pub enum CodegenTarget {
 enum OperatorType {
     Infix(&'static str),
     Function(&'static str),
+    // TODO: Do this properly
+    // Prefix(&'static str),
 }
 
 struct CppEmitter<'a, W: Write> {
@@ -586,10 +588,11 @@ impl<'a> Codegen<'a> {
             ExprKind::Constant { constant } => self.codegen_constant(file, *constant)?,
             ExprKind::Unary { op, expr } => {
                 let op_equivalent = match op {
+                    // TODO: Do this properly these should be prefix
                     UnaryOperator::UnaryMinus => OperatorType::Infix("-"),
                     UnaryOperator::UnaryPlus => OperatorType::Infix("+"),
-                    UnaryOperator::Not => OperatorType::Function("logic_negation"),
-                    UnaryOperator::BinaryNegation => todo!("codegen BinaryNegation"),
+                    UnaryOperator::Not => OperatorType::Infix("!"),
+                    UnaryOperator::BinaryNegation => OperatorType::Infix("~"),
                     UnaryOperator::ReductionAnd => todo!("codegen ReductionAnd"),
                     UnaryOperator::ReductionNand => todo!("codegen ReductionNand"),
                     UnaryOperator::ReductionOr => todo!("codegen ReductionOr"),
