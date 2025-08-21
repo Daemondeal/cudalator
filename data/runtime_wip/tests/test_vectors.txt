@@ -1,0 +1,1361 @@
+# Format: operation, width1, value1, width2, value2, result_width
+# =================================================================
+# ADD
+# =================================================================
+# simple add, no carry
+ADD, 8, 10, 8, 5, 8
+# carry dropped (truncate)
+ADD, 8, 255, 8, 1, 8
+# carry kept (extra bit)
+ADD, 8, 255, 8, 1, 9
+# mixed widths, no carry
+ADD, 16, 1000, 8, 50, 16
+# mixed widths, carry kept
+ADD, 16, 65535, 8, 1, 17
+# carry beyond class cap → drop (128-bit limit)
+ADD, 128, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 128, 1, 128
+# 64-bit max + 1 → 65-bit result
+ADD, 64, 0xFFFFFFFFFFFFFFFF, 32, 1, 65
+# add zero
+ADD, 32, 12345, 32, 0, 32
+# asymmetric widths, big result
+ADD, 8, 255, 128, 1, 128
+
+# =================================================================
+# width = 1 and 2 (tiny edges)
+# =================================================================
+# 0 + 0
+ADD, 1, 0, 1, 0, 1
+# 1 + 0
+ADD, 1, 1, 1, 0, 1
+# 1 + 1 → carry dropped
+ADD, 1, 1, 1, 1, 1
+# 1 + 1 → carry kept
+ADD, 1, 1, 1, 1, 2
+# 2-bit wrap: 3 + 1 → drop
+ADD, 2, 3, 2, 1, 2
+# 2-bit wrap: 3 + 1 → keep
+ADD, 2, 3, 2, 1, 3
+# 2 + 1 fits
+ADD, 2, 2, 2, 1, 2
+
+# =================================================================
+# byte boundary (7/8/9 bits)
+# =================================================================
+# 0x7F + 1 stays within 8
+ADD, 8, 0x7F, 8, 1, 8
+# 0x80 + 0x80 → carry dropped
+ADD, 8, 0x80, 8, 0x80, 8
+# 0x80 + 0x80 → carry kept
+ADD, 8, 0x80, 8, 0x80, 9
+# 7-bit max + 1 → drop vs keep
+ADD, 7, 0x7F, 7, 1, 7
+ADD, 7, 0x7F, 7, 1, 8
+# 9-bit max + 1 → drop vs keep
+ADD, 9, 0x1FF, 9, 1, 9
+ADD, 9, 0x1FF, 9, 1, 10
+
+# =================================================================
+# 16-bit edge cases
+# =================================================================
+# MSB flip, no carry out
+ADD, 16, 0x7FFF, 16, 1, 16
+# half + half → carry dropped/kept
+ADD, 16, 0x8000, 16, 0x8000, 16
+ADD, 16, 0x8000, 16, 0x8000, 17
+# 0xFFFF + 1 → drop/keep
+ADD, 16, 0xFFFF, 16, 1, 16
+ADD, 16, 0xFFFF, 16, 1, 17
+# ripple carry: 0x00FF + 1 → fits in 9 bits
+ADD, 16, 0x00FF, 16, 1, 9
+# truncation below operand widths (sum still small)
+ADD, 16, 0x0003, 16, 0x0004, 8
+
+# =================================================================
+# 31/32/33-bit boundaries
+# =================================================================
+# 31-bit max + 1 → drop/keep
+ADD, 31, 0x7FFFFFFF, 31, 1, 31
+ADD, 31, 0x7FFFFFFF, 31, 1, 32
+# 32-bit MSB flip
+ADD, 32, 0x7FFFFFFF, 32, 1, 32
+# 32-bit half + half → drop/keep
+ADD, 32, 0x80000000, 32, 0x80000000, 32
+ADD, 32, 0x80000000, 32, 0x80000000, 33
+# 0xFFFFFFFF + 1 → drop/keep
+ADD, 32, 0xFFFFFFFF, 32, 1, 32
+ADD, 32, 0xFFFFFFFF, 32, 1, 33
+
+# =================================================================
+# 63/64/65-bit boundaries
+# =================================================================
+# 63-bit max + 1 → drop/keep
+ADD, 63, 0x7FFFFFFFFFFFFFFF, 63, 1, 63
+ADD, 63, 0x7FFFFFFFFFFFFFFF, 63, 1, 64
+# 64-bit MSB flip
+ADD, 64, 0x7FFFFFFFFFFFFFFF, 64, 1, 64
+# 64-bit half + half → drop/keep
+ADD, 64, 0x8000000000000000, 64, 0x8000000000000000, 64
+ADD, 64, 0x8000000000000000, 64, 0x8000000000000000, 65
+# 0xFFFFFFFFFFFFFFFF + 1 → drop
+ADD, 64, 0xFFFFFFFFFFFFFFFF, 64, 1, 64
+
+# =================================================================
+# 127/128-bit boundaries
+# =================================================================
+# 127-bit max + 1 → drop/keep
+ADD, 127, 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 127, 1, 127
+ADD, 127, 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 127, 1, 128
+# 128-bit MSB flip
+ADD, 128, 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 128, 1, 128
+# 128-bit half + half → carry beyond 128 → drop
+ADD, 128, 0x80000000000000000000000000000000, 128, 0x80000000000000000000000000000000, 128
+# 128-bit all ones + 1 → wrap to zero (by truncation)
+ADD, 1, 1, 128, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 128
+
+# =================================================================
+# cross-width zero-extension checks
+# =================================================================
+# narrow full-range + 1 into wide
+ADD, 8, 0xFF, 16, 1, 16
+# same but explicitly truncated to 8
+ADD, 8, 0xFF, 16, 1, 8
+# same with “just enough” width for the sum
+ADD, 8, 0xFF, 16, 1, 9
+# wide + narrow zero; keep wide
+ADD, 24, 0xABCDE, 8, 0, 24
+# wide + narrow with truncation below operands
+ADD, 24, 0x00F0F0, 8, 0x0F, 12
+# equalize via zero-extend then add
+ADD, 12, 0x0A5, 4, 0xF, 12
+# asymmetric huge + tiny, big result
+ADD, 128, 0x00000000000000000000000000000001, 8, 1, 128
+# tiny + huge all-ones → overflow at 128
+ADD, 1, 1, 128, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 128
+
+# =================================================================
+# ripple-carry chains (exercise carry propagation)
+# =================================================================
+# 0x00FF..FF + 1 (24→25-bit)
+ADD, 32, 0x00FFFFFF, 32, 1, 25
+# 0x0000FFFF + 1 (fits in 17 bits)
+ADD, 32, 0x0000FFFF, 32, 1, 17
+# propagate across nibbles
+ADD, 16, 0x0FFF, 16, 1, 16
+# propagate across bytes
+ADD, 32, 0x00FF00FF, 32, 1, 32
+# propagate across words
+ADD, 64, 0x0000FFFF0000FFFF, 64, 1, 64
+
+# =================================================================
+# zeros, ones, and idempotence
+# =================================================================
+# x + 0 with narrowing
+ADD, 20, 0xABCDE, 20, 0, 12
+# 0 + x (mixed bases)
+ADD, 32, 0x00000001, 8, 1, 32
+# x + x without overflow (wider result)
+ADD, 10, 0x155, 10, 0x155, 11
+# x + x with truncation and with keep
+ADD, 10, 0x200, 10, 0x200, 10
+ADD, 10, 0x200, 10, 0x200, 11
+
+
+# =================================================================
+# --- Subtraction Tests (SUB) ---
+# Semantics: zero-extend narrower → subtract unsigned → truncate to result_width
+# =================================================================
+# basic subtraction
+SUB, 8, 100, 8, 50, 8
+# result is zero
+SUB, 16, 1234, 16, 1234, 16
+# underflow wraps (borrow dropped by truncation)
+SUB, 8, 10, 8, 20, 8
+# mixed widths
+SUB, 32, 1000, 16, 500, 32
+# cross chunk boundary
+SUB, 64, 0x100000000, 32, 1, 64
+# subtract from zero (max wrap)
+SUB, 32, 0, 32, 1, 32
+# long borrow chain across many chunks
+SUB, 96, 0x100000000000000000000000, 96, 1, 96
+# narrow minus wider (large wrap)
+SUB, 32, 100, 64, 0xFFFFFFFFFFFFFFFF, 64
+# x - x = 0 (large patterned value)
+SUB, 128, 0xDEADBEEFCAFEBABE1234567890ABCDEF, 128, 0xDEADBEEFCAFEBABE1234567890ABCDEF, 128
+# no borrow from a field of all ones
+SUB, 64, 0xFFFFFFFFFFFFFFFF, 32, 0xABCDE, 64
+# subtract zero
+SUB, 128, 0xDEADBEEFCAFEBABE1234567890ABCDEF, 1, 0, 128
+
+# =================================================================
+# tiny widths (1–2 bits)
+# =================================================================
+# 0 - 0
+SUB, 1, 0, 1, 0, 1
+# 1 - 0
+SUB, 1, 1, 1, 0, 1
+# 0 - 1 → wrap (borrow dropped)
+SUB, 1, 0, 1, 1, 1
+# 0 - 1 with wider result (wrap visible as all ones)
+SUB, 1, 0, 1, 1, 2
+# 2-bit: 0 - 1 → 3
+SUB, 2, 0, 2, 1, 2
+# 2-bit: 1 - 2 → 3
+SUB, 2, 1, 2, 2, 2
+# 2-bit: 3 - 3 → 0
+SUB, 2, 3, 2, 3, 2
+
+# =================================================================
+# byte boundaries (7/8/9 bits)
+# =================================================================
+# no borrow
+SUB, 8, 0x80, 8, 0x01, 8
+# borrow from MSB but still within width
+SUB, 8, 0x00, 8, 0x01, 8
+# 0x00 - 0x80 → wrap
+SUB, 8, 0x00, 8, 0x80, 8
+# 7-bit max minus 1
+SUB, 7, 0x7F, 7, 1, 7
+# 7-bit: 0 - 1 → wrap vs kept in 8
+SUB, 7, 0, 7, 1, 7
+SUB, 7, 0, 7, 1, 8
+# 9-bit: 0x100 - 1 → 0x0FF
+SUB, 9, 0x100, 9, 1, 9
+
+# =================================================================
+# 16-bit edges
+# =================================================================
+# 0x8000 - 1
+SUB, 16, 0x8000, 16, 1, 16
+# 0x0000 - 1 → wrap (0xFFFF)
+SUB, 16, 0x0000, 16, 1, 16
+# 0x10000 not representable → simulate via 17-bit minuend
+SUB, 17, 0x10000, 16, 1, 17
+# alternating pattern, borrow ripple inside lower half
+SUB, 16, 0x00F0, 16, 0x00FF, 16
+# truncation below operand width
+SUB, 16, 0x1234, 16, 0x0034, 8
+# borrow across bytes
+SUB, 16, 0x0100, 16, 0x0001, 16
+
+# =================================================================
+# 31/32/33-bit boundaries
+# =================================================================
+# 32-bit: 0x80000000 - 1
+SUB, 32, 0x80000000, 32, 1, 32
+# 32-bit: 0x00000000 - 1 → 0xFFFFFFFF
+SUB, 32, 0x00000000, 32, 1, 32
+# 31-bit: underflow wrap vs kept in 32
+SUB, 31, 0x00000000, 31, 1, 31
+SUB, 31, 0x00000000, 31, 1, 32
+# truncation to fewer bits
+SUB, 32, 0x00010000, 32, 0x00000001, 8
+# borrow chain: 0x01000000 - 1
+SUB, 32, 0x01000000, 32, 1, 32
+
+# =================================================================
+# 63/64/65-bit boundaries
+# =================================================================
+# 64-bit: 0x8000... - 1
+SUB, 64, 0x8000000000000000, 64, 1, 64
+# 64-bit: 0 - 1 → 0xFFFF...FFFF
+SUB, 64, 0x0000000000000000, 64, 1, 64
+# 63-bit: 0 - 1 (wrap) vs kept in 64
+SUB, 63, 0x0, 63, 1, 63
+SUB, 63, 0x0, 63, 1, 64
+# long borrow ripple across words
+SUB, 64, 0x0001000000000000, 64, 1, 64
+# patterned borrow
+SUB, 64, 0x1000000010000000, 64, 0x1, 64
+
+# =================================================================
+# 127/128-bit boundaries
+# =================================================================
+# 128-bit: 0x8000... - 1
+SUB, 128, 0x80000000000000000000000000000000, 128, 1, 128
+# 128-bit: 0 - 1 → all ones
+SUB, 128, 0x00000000000000000000000000000000, 128, 1, 128
+# 127-bit: 0 - 1 (wrap) vs kept in 128
+SUB, 127, 0x0, 127, 1, 127
+SUB, 127, 0x0, 127, 1, 128
+# borrow chain from high limb
+SUB, 128, 0x00010000000000000000000000000000, 128, 1, 128
+# all ones minus a small value
+SUB, 128, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 16, 0x1234, 128
+
+# =================================================================
+# cross-width zero-extension checks
+# =================================================================
+# wide - narrow
+SUB, 32, 0x00010000, 8, 0x01, 32
+# narrow - wide (forces wrap)
+SUB, 8, 0x01, 32, 0x00010000, 32
+# same but truncate to narrow
+SUB, 8, 0x01, 32, 0x00010000, 8
+# equalized via zero-extend first (no wrap)
+SUB, 12, 0x0A5, 4, 0x5, 12
+# asymmetric huge - tiny, big result
+SUB, 128, 0x00000000000000000000000000000010, 8, 1, 128
+# tiny - huge all-ones (wrap to 128 bits)
+SUB, 1, 1, 128, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 128
+
+# =================================================================
+# borrow chains (exercise ripple across many bytes)
+# =================================================================
+# cascade across lower byte
+SUB, 16, 0x0100, 16, 0x0001, 16
+# cascade across two bytes
+SUB, 16, 0x020000, 24, 1, 24
+# 32-bit: 0x01000000 - 0x00000001
+SUB, 32, 0x01000000, 32, 0x00000001, 32
+# 64-bit: 0x0001000000000000 - 1
+SUB, 64, 0x0001000000000000, 64, 1, 64
+# 96-bit: 0x0000...010000 - 1
+SUB, 96, 0x000000000000000000010000, 96, 1, 96
+# patterned: borrow through alternating bytes
+SUB, 64, 0x0100010001000100, 64, 1, 64
+
+# =================================================================
+# self, zero, and truncation combos
+# =================================================================
+# x - 0 with narrowing
+SUB, 20, 0xABCDE, 1, 0, 12
+# 0 - x with narrowing (wrap then truncate)
+SUB, 20, 0, 20, 0x12345, 12
+# x - x with truncation below operand widths (should still be 0)
+SUB, 16, 0xBEEF, 16, 0xBEEF, 8
+# subtract small from small, then truncate to too-small width
+SUB, 12, 0x00A, 12, 0x005, 4
+# subtract 1 across mixed widths and result sizes
+SUB, 24, 0x000001, 8, 1, 8
+# high-pattern minus low-pattern, keep wide
+SUB, 48, 0xAAAA5555AAAA, 16, 0x1234, 48
+
+# =================================================================
+# --- Multiplication Tests (MUL) ---
+# =================================================================
+MUL, 8, 10, 8, 5, 16
+MUL, 32, 12345678, 32, 0, 64
+MUL, 64, 0xDEADBEEFCAFEBABE, 8, 1, 72
+MUL, 16, 65535, 16, 65535, 32
+# 32×32→64
+MUL, 32, 0xFFFFFFFF, 32, 0xFFFFFFFF, 64
+# exactly 128 bits
+MUL, 64, 0xFFFFFFFFFFFFFFFF, 64, 0xFFFFFFFFFFFFFFFF, 128
+# ideal >128 → cap
+MUL, 80, 0xAAAAAAAAAAAAAAAAAAAA, 80, 0xAAAAAAAAAAAAAAAAAAAA, 128
+# wide × small
+MUL, 96, 0x100000000000000000000000, 4, 2, 100
+
+# tiny widths
+# 1b
+MUL, 1, 1, 1, 1, 1
+# 2b overflow→trunc
+MUL, 2, 3, 2, 3, 2
+# 2b widen keeps full
+MUL, 2, 3, 2, 3, 4
+
+# truncation vs keep
+# 8b overflow→trunc
+MUL, 8, 200, 8, 200, 8
+# same, keep full
+MUL, 8, 200, 8, 200, 16
+
+# powers of two (shift-like)
+MUL, 8, 0x03, 8, 0x02, 8
+MUL, 8, 0x80, 8, 0x02, 8
+MUL, 8, 0x80, 8, 0x02, 9
+MUL, 32, 0x1, 32, 0x80000000, 64
+
+# mixed widths
+MUL, 12, 0xABC, 4, 0xF, 16
+MUL, 24, 0xFFFFFF, 8, 0xFF, 32
+MUL, 7, 0x7F, 9, 0x1FF, 16
+MUL, 9, 0x1FF, 7, 0x7F, 9
+
+# boundaries 16/32/64
+MUL, 16, 0x8000, 16, 0x8000, 32
+MUL, 32, 0x80000000, 32, 0x2, 33
+MUL, 32, 0xFFFFFFFF, 8, 0xFF, 40
+MUL, 64, 0x8000000000000000, 2, 3, 66
+
+# 63/64/65-bit edges
+MUL, 63, 0x7FFFFFFFFFFFFFFF, 2, 2, 64
+MUL, 64, 0xFFFFFFFFFFFFFFFF, 1, 1, 64
+MUL, 64, 0xFFFFFFFFFFFFFFFF, 2, 2, 65
+
+# 127/128-bit edges
+MUL, 127, 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 2, 2, 128
+MUL, 128, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 1, 1, 128
+MUL, 128, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 2, 2, 128
+
+# exact-width hits
+MUL, 10, 0x3FF, 10, 0x3FF, 20
+MUL, 20, 0xFFFFF, 12, 0xFFF, 32
+
+# zeros/ones sanity
+MUL, 48, 0, 48, 0xFFFFFFFFFFFF, 96
+MUL, 48, 1, 48, 0x123456789ABC, 96
+MUL, 48, 0x123456789ABC, 1, 1, 48
+
+
+# =================================================================
+# --- Comparison Tests (LT, GT, LTE, GTE) ---
+# unsigned compare; narrower zero-extends; result width = 1
+# =================================================================
+
+# LT
+LT, 8, 10, 8, 20, 1
+LT, 16, 1000, 16, 1000, 1
+LT, 32, 0xFFFFFFFF, 32, 0x1, 1
+LT, 8, 0, 8, 1, 1
+LT, 8, 255, 16, 255, 1
+LT, 16, 0x00FF, 8, 0xFF, 1
+LT, 64, 0x7FFFFFFFFFFFFFFF, 64, 0x8000000000000000, 1
+LT, 128, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 128, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 1
+LT, 127, 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 128, 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 1
+
+# GT
+GT, 8, 50, 8, 5, 1
+GT, 8, 50, 8, 50, 1
+GT, 8, 5, 8, 50, 1
+GT, 8, 0, 8, 1, 1
+GT, 16, 0x0100, 8, 0xFF, 1
+GT, 64, 0x8000000000000000, 64, 0x7FFFFFFFFFFFFFFF, 1
+GT, 32, 0x0, 64, 0x1, 1
+GT, 128, 0x1, 8, 1, 1
+
+# LTE
+LTE, 8, 10, 8, 11, 1
+LTE, 64, 0xDEADBEEF, 64, 0xDEADBEEF, 1
+LTE, 8, 11, 8, 10, 1
+LTE, 8, 0, 8, 0, 1
+LTE, 32, 0xFFFFFFFF, 32, 0xFFFFFFFF, 1
+LTE, 16, 0x00FF, 8, 0xFF, 1
+LTE, 9, 0x1FF, 8, 0xFF, 1
+
+# GTE
+GTE, 8, 100, 8, 99, 1
+GTE, 128, 0x1234, 128, 0x1234, 1
+GTE, 8, 99, 8, 100, 1
+GTE, 8, 0, 8, 0, 1
+GTE, 8, 255, 16, 255, 1
+GTE, 64, 0xFFFFFFFFFFFFFFFF, 32, 0xFFFFFFFF, 1
+GTE, 32, 0x0, 8, 0, 1
+
+
+# =================================================================
+# --- Shift Tests (LSHIFT, RSHIFT) ---
+# =================================================================
+
+# LSHIFT — basics
+LSHIFT, 8, 12, 4, 2, 8
+LSHIFT, 16, 0x1234, 4, 1, 16
+LSHIFT, 64, 0xAAAAAAAAAAAAAAAA, 8, 4, 64
+LSHIFT, 32, 0xABCD, 8, 0, 32
+LSHIFT, 16, 0xFFFF, 8, 16, 16
+
+# LSHIFT — tiny widths
+LSHIFT, 1, 0, 8, 1, 1
+LSHIFT, 1, 1, 8, 0, 1
+LSHIFT, 1, 1, 8, 1, 1
+#LSHIFT, 1, 1, 8, 1, 2
+LSHIFT, 2, 3, 8, 1, 2
+#LSHIFT, 2, 3, 8, 1, 3
+
+# LSHIFT — byte boundaries
+LSHIFT, 7, 0x7F, 8, 1, 7
+#LSHIFT, 7, 0x7F, 8, 1, 8
+LSHIFT, 8, 1, 8, 7, 8
+LSHIFT, 8, 1, 8, 8, 8
+LSHIFT, 8, 1, 8, 9, 8
+
+# LSHIFT — larger widths and widening
+LSHIFT, 16, 0x8001, 8, 1, 16
+#LSHIFT, 16, 0x8001, 8, 1, 17
+LSHIFT, 32, 0x00000001, 8, 31, 32
+LSHIFT, 64, 0x8000000000000000, 8, 1, 64
+#LSHIFT, 64, 0x8000000000000000, 8, 1, 65
+LSHIFT, 128, 0x1, 8, 127, 128
+LSHIFT, 128, 0x1, 16, 128, 128
+LSHIFT, 16, 1, 16, 200, 16
+
+# LSHIFT — truncation
+LSHIFT, 16, 0x1234, 8, 4, 8
+LSHIFT, 64, 0x00FF00FF00FF00FF, 8, 4, 32
+
+# RSHIFT — basics
+RSHIFT, 8, 204, 4, 4, 8
+RSHIFT, 16, 0x1234, 4, 1, 16
+RSHIFT, 64, 0xAAAAAAAAAAAAAAAA, 8, 4, 64
+RSHIFT, 32, 0xABCD, 8, 0, 32
+RSHIFT, 16, 0xFFFF, 8, 16, 16
+
+# RSHIFT — tiny widths
+RSHIFT, 1, 1, 8, 0, 1
+RSHIFT, 1, 1, 8, 1, 1
+RSHIFT, 1, 0, 8, 1, 1
+RSHIFT, 2, 2, 8, 1, 2
+RSHIFT, 2, 3, 8, 2, 2
+
+# RSHIFT — byte boundaries
+RSHIFT, 8, 0x80, 8, 7, 8
+RSHIFT, 8, 0xFF, 8, 8, 8
+RSHIFT, 8, 0xFF, 8, 12, 8
+RSHIFT, 7, 0x40, 8, 6, 7
+
+# RSHIFT — larger widths and edges
+RSHIFT, 16, 0xBEEF, 8, 4, 16
+RSHIFT, 16, 0x8001, 8, 1, 8
+RSHIFT, 64, 0x8000000000000000, 8, 63, 64
+RSHIFT, 64, 0x8000000000000001, 8, 63, 64
+RSHIFT, 64, 0xFFFFFFFFFFFFFFFF, 8, 63, 64
+RSHIFT, 65, 0x1FFFFFFFFFFFFFFFF, 8, 32, 65
+RSHIFT, 128, 0x80000000000000000000000000000000, 16, 127, 128
+RSHIFT, 128, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 16, 128, 128
+
+# RSHIFT — truncation
+RSHIFT, 16, 0xF0F0, 8, 4, 8
+RSHIFT, 64, 0x00FF00FF00FF00FF, 8, 8, 16
+
+
+# =================================================================
+# --- Logical NOT Tests (LNOT) ---
+# =================================================================
+
+# zero → 1
+LNOT, 1, 0, 0, 0, 1
+LNOT, 7, 0, 0, 0, 1
+LNOT, 8, 0, 0, 0, 1
+LNOT, 9, 0, 0, 0, 1
+LNOT, 16, 0, 0, 0, 1
+LNOT, 32, 0, 0, 0, 1
+LNOT, 64, 0, 0, 0, 1
+LNOT, 65, 0, 0, 0, 1
+LNOT, 127, 0, 0, 0, 1
+LNOT, 128, 0, 0, 0, 1
+
+# non-zero
+LNOT, 1, 1, 0, 0, 1
+LNOT, 2, 1, 0, 0, 1
+LNOT, 2, 2, 0, 0, 1
+LNOT, 7, 1, 0, 0, 1
+LNOT, 7, 0x7F, 0, 0, 1
+LNOT, 8, 1, 0, 0, 1
+LNOT, 8, 0x80, 0, 0, 1
+LNOT, 8, 0xFF, 0, 0, 1
+LNOT, 9, 0x100, 0, 0, 1
+LNOT, 9, 0x1FF, 0, 0, 1
+LNOT, 16, 1, 0, 0, 1
+LNOT, 16, 0x8000, 0, 0, 1
+LNOT, 16, 0xFFFF, 0, 0, 1
+LNOT, 32, 1, 0, 0, 1
+LNOT, 32, 0x80000000, 0, 0, 1
+LNOT, 32, 0xFFFFFFFF, 0, 0, 1
+LNOT, 64, 1, 0, 0, 1
+LNOT, 64, 0x8000000000000000, 0, 0, 1
+LNOT, 64, 0xFFFFFFFFFFFFFFFF, 0, 0, 1
+LNOT, 65, 0x1, 0, 0, 1
+LNOT, 65, 0x10000000000000000, 0, 0, 1
+LNOT, 96, 0xAAAAAAAAAAAAAAAAAAAAAAAA, 0, 0, 1
+LNOT, 96, 0x555555555555555555555555, 0, 0, 1
+LNOT, 127, 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 0, 0, 1
+LNOT, 128, 0x1, 0, 0, 1
+LNOT, 128, 0x80000000000000000000000000000000, 0, 0, 1
+LNOT, 128, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 0, 0, 1
+
+
+# =================================================================
+# --- Division and Modulo Tests (DIV, MOD) ---
+# =================================================================
+
+# basic
+DIV, 8, 100, 8, 10, 8
+MOD, 8, 100, 8, 10, 8
+
+# non-zero remainder
+DIV, 16, 100, 8, 30, 16
+MOD, 16, 100, 8, 30, 8
+
+# ÷1
+DIV, 64, 0xDEADBEEF, 8, 1, 64
+MOD, 64, 0xDEADBEEF, 8, 1, 8
+
+# self
+DIV, 32, 5000, 32, 5000, 32
+MOD, 32, 5000, 32, 5000, 32
+
+# wide ÷ small
+DIV, 96, 0x100000000000000000000000, 8, 2, 96
+MOD, 96, 0x100000000000000000000000, 8, 2, 8
+
+# div/0
+DIV, 16, 1234, 8, 0, 16
+MOD, 16, 1234, 8, 0, 8
+
+# tiny widths
+DIV, 1, 0, 1, 1, 1
+MOD, 1, 0, 1, 1, 1
+DIV, 1, 1, 1, 1, 1
+MOD, 1, 1, 1, 1, 1
+DIV, 2, 3, 2, 2, 2
+MOD, 2, 3, 2, 2, 2
+
+# powers of two
+DIV, 8, 128, 8, 2, 8
+MOD, 8, 128, 8, 2, 8
+#DIV, 16, 0x8000, 8, 256, 16
+#MOD, 16, 0x8000, 8, 256, 16
+
+# dividend < divisor
+DIV, 16, 5, 16, 7, 16
+MOD, 16, 5, 16, 7, 16
+DIV, 32, 1, 64, 0xFFFFFFFF, 32
+MOD, 32, 1, 64, 0xFFFFFFFF, 32
+
+# max values
+DIV, 32, 0xFFFFFFFF, 8, 0xFF, 32
+MOD, 32, 0xFFFFFFFF, 8, 0xFF, 8
+DIV, 64, 0xFFFFFFFFFFFFFFFF, 64, 2, 64
+MOD, 64, 0xFFFFFFFFFFFFFFFF, 64, 2, 64
+
+# exact multiples
+DIV, 32, 1000, 32, 250, 32
+MOD, 32, 1000, 32, 250, 32
+DIV, 64, 0x100000000, 32, 0x10000, 64
+MOD, 64, 0x100000000, 32, 0x10000, 32
+
+# remainder extremes
+DIV, 16, 999, 8, 10, 16
+MOD, 16, 999, 8, 10, 8
+DIV, 32, 100, 32, 99, 32
+MOD, 32, 100, 32, 99, 32
+
+# 128-bit boundaries
+DIV, 128, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 64, 0xFFFFFFFFFFFFFFFF, 128
+MOD, 128, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 64, 0xFFFFFFFFFFFFFFFF, 64
+DIV, 128, 1, 128, 1, 128
+MOD, 128, 1, 128, 1, 128
+DIV, 128, 0, 128, 1, 128
+MOD, 128, 0, 128, 1, 128
+DIV, 128, 123456789, 128, 0, 128
+MOD, 128, 123456789, 128, 0, 128
+
+
+# =================================================================
+# --- Bitwise AND Tests (AND) ---
+# =================================================================
+
+# basic
+AND, 8, 204, 8, 170, 8
+
+# identities
+AND, 32, 0xDEADBEEF, 32, 0, 32
+AND, 64, 0x1234567890ABCDEF, 64, 0xFFFFFFFFFFFFFFFF, 64
+
+# cross-width
+AND, 16, 0xFFFF, 8, 0xF0, 16
+AND, 8, 0xFF, 16, 0xF0F0, 16
+AND, 32, 0x00FF00FF, 16, 0x0F0F, 32
+AND, 64, 0xFFFFFFFFFFFFFFFF, 8, 0xAA, 64
+AND, 8, 0xAA, 64, 0xFFFFFFFFFFFFFFFF, 64
+
+# truncation
+AND, 16, 0xFFFF, 16, 0xFFFF, 8
+AND, 32, 0xAAAAAAAA, 32, 0x55555555, 16
+
+# edge patterns
+AND, 128, 0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA, 128, 0x55555555555555555555555555555555, 128
+AND, 128, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 128, 0x0, 128
+AND, 128, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 128, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 128
+
+# small widths
+AND, 1, 0, 1, 0, 1
+AND, 1, 1, 1, 1, 1
+AND, 2, 3, 2, 2, 2
+AND, 2, 3, 2, 1, 2
+AND, 3, 0x7, 2, 0x3, 3
+
+# byte boundaries
+AND, 7, 0x7F, 7, 0x55, 7
+AND, 8, 0xAA, 8, 0x55, 8
+AND, 9, 0x1FF, 9, 0x100, 9
+
+# larger widths
+AND, 16, 0xAAAA, 16, 0x5555, 16
+AND, 32, 0xFFFFFFFF, 32, 0x0000FFFF, 32
+AND, 64, 0xAAAAAAAAAAAAAAAA, 64, 0xCCCCCCCCCCCCCCCC, 64
+AND, 127, 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 127, 0x5555555555555555555555555555555, 127
+AND, 128, 0x80000000000000000000000000000000, 128, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 128
+
+
+# =================================================================
+# --- Bitwise OR Tests (OR) ---
+# =================================================================
+
+# basic
+OR, 8, 204, 8, 170, 8
+
+# identities
+OR, 32, 0xDEADBEEF, 32, 0, 32
+OR, 64, 0x1234567890ABCDEF, 64, 0xFFFFFFFFFFFFFFFF, 64
+
+# cross-width
+OR, 16, 0x00FF, 8, 0xF0, 16
+OR, 8, 0x0F, 16, 0xF0F0, 16
+OR, 32, 0x00FF00FF, 16, 0xF0F0, 32
+OR, 64, 0xAAAAAAAAAAAAAAAA, 8, 0x55, 64
+OR, 8, 0xAA, 64, 0x5555555555555555, 64
+
+# truncation
+OR, 16, 0xFFFF, 16, 0xFFFF, 8
+OR, 32, 0xAAAAAAAA, 32, 0x55555555, 16
+
+# edge patterns
+OR, 128, 0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA, 128, 0x55555555555555555555555555555555, 128
+OR, 128, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 128, 0x0, 128
+OR, 128, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 128, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 128
+
+# small widths
+OR, 1, 0, 1, 0, 1
+OR, 1, 1, 1, 0, 1
+OR, 2, 1, 2, 2, 2
+OR, 2, 3, 2, 0, 2
+OR, 3, 0x5, 3, 0x2, 3
+
+# byte boundaries
+OR, 7, 0x55, 7, 0x2A, 7
+OR, 8, 0xAA, 8, 0x55, 8
+OR, 9, 0x100, 9, 0x0FF, 9
+
+# larger widths
+OR, 16, 0xAAAA, 16, 0x5555, 16
+OR, 32, 0xFFFFFFFF, 32, 0x0000FFFF, 32
+OR, 64, 0xAAAAAAAAAAAAAAAA, 64, 0xCCCCCCCCCCCCCCCC, 64
+OR, 127, 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 127, 0x1, 127
+OR, 128, 0x80000000000000000000000000000000, 128, 0x1, 128
+
+
+# =================================================================
+# --- Equality Tests (EQ, NEQ) ---
+# =================================================================
+
+# EQ basics
+EQ, 32, 12345, 32, 12345, 1
+EQ, 32, 12345, 32, 54321, 1
+
+# cross-width equal
+EQ, 16, 100, 32, 100, 1
+EQ, 8, 255, 16, 255, 1
+EQ, 1, 1, 8, 1, 1
+EQ, 9, 0x1FF, 16, 0x1FF, 1
+
+# cross-width unequal
+EQ, 8, 255, 16, 256, 1
+EQ, 4, 0xF, 8, 0x0, 1
+
+# large equal
+EQ, 128, 0xDEADBEEFCAFEBABE, 128, 0xDEADBEEFCAFEBABE, 1
+EQ, 128, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 128, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 1
+
+# large unequal
+EQ, 128, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFE, 128, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 1
+EQ, 127, 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 128, 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 1
+
+# NEQ basics
+NEQ, 8, 10, 8, 20, 1
+NEQ, 64, 0xABC, 64, 0xABC, 1
+
+# NEQ cross-width
+NEQ, 16, 0xFF, 8, 0xFF, 1
+NEQ, 16, 0x100, 8, 0xFF, 1
+NEQ, 8, 0, 16, 1, 1
+
+# NEQ large
+NEQ, 128, 0xDEADBEEFCAFEBABE, 128, 0xCAFEBABEDEADBEEF, 1
+NEQ, 128, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 128, 0x0, 1
+
+
+# =================================================================
+# --- Logical AND Tests (LAND) ---
+# =================================================================
+
+# basics
+LAND, 8, 10, 16, 20, 1
+LAND, 32, 12345, 8, 0, 1
+LAND, 8, 0, 64, 0xFF, 1
+LAND, 16, 0, 16, 0, 1
+
+# single-bit
+LAND, 1, 1, 1, 1, 1
+LAND, 1, 1, 1, 0, 1
+LAND, 1, 0, 1, 1, 1
+LAND, 1, 0, 1, 0, 1
+
+# cross-width
+LAND, 8, 0xFF, 16, 0xFFFF, 1
+LAND, 8, 0xFF, 16, 0, 1
+LAND, 32, 0, 128, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 1
+
+# large values
+LAND, 128, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 128, 1, 1
+LAND, 128, 0, 128, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 1
+
+# =================================================================
+# --- Logical OR Tests (LOR) ---
+# treat any non-zero as 1; result width = 1
+# =================================================================
+
+# basics
+LOR, 8, 10, 16, 20, 1
+LOR, 32, 12345, 8, 0, 1
+LOR, 8, 0, 64, 0xFF, 1
+LOR, 16, 0, 16, 0, 1
+
+# single-bit
+LOR, 1, 1, 1, 1, 1
+LOR, 1, 1, 1, 0, 1
+LOR, 1, 0, 1, 1, 1
+LOR, 1, 0, 1, 0, 1
+
+# cross-width
+LOR, 8, 0xFF, 16, 0xFFFF, 1
+LOR, 8, 0, 16, 0xFFFF, 1
+LOR, 32, 0x1234, 128, 0, 1
+LOR, 32, 0, 128, 0, 1
+
+# large values
+LOR, 128, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 128, 1, 1
+LOR, 128, 0, 128, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 1
+
+# =================================================================
+# --- Bitwise NOT Tests (BNOT) ---
+# =================================================================
+# basics
+BNOT, 8, 0, 0, 0, 8
+BNOT, 16, 0xFFFF, 0, 0, 16
+BNOT, 32, 0x0F0F0F0F, 0, 0, 32
+# non-byte-aligned
+BNOT, 13, 0x0A5A, 0, 0, 13
+BNOT, 7, 0x55, 0, 0, 7
+BNOT, 9, 0x1FF, 0, 0, 9
+# small widths
+BNOT, 1, 0, 0, 0, 1
+BNOT, 1, 1, 0, 0, 1
+BNOT, 2, 3, 0, 0, 2
+BNOT, 2, 1, 0, 0, 2
+# larger widths
+BNOT, 64, 0xAAAAAAAAAAAAAAAA, 0, 0, 64
+BNOT, 64, 0xFFFFFFFFFFFFFFFF, 0, 0, 64
+BNOT, 64, 0, 0, 0, 64
+BNOT, 127, 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 0, 0, 127
+BNOT, 128, 0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA, 0, 0, 128
+BNOT, 128, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 0, 0, 128
+BNOT, 128, 0, 0, 0, 128
+
+
+# =================================================================
+# --- Reduction Operator Tests ---
+# all results are 1-bit
+# =================================================================
+
+# RAND
+RAND, 1, 1, 0, 0, 1
+RAND, 1, 0, 0, 0, 1
+RAND, 8, 0xFF, 0, 0, 1
+RAND, 8, 0xFE, 0, 0, 1
+RAND, 16, 0xFFFF, 0, 0, 1
+RAND, 16, 0x7FFF, 0, 0, 1
+RAND, 128, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 0, 0, 1
+
+# RNAND
+RNAND, 1, 1, 0, 0, 1
+RNAND, 1, 0, 0, 0, 1
+RNAND, 8, 0xFF, 0, 0, 1
+RNAND, 8, 0xFE, 0, 0, 1
+RNAND, 16, 0xFFFF, 0, 0, 1
+RNAND, 16, 0x7FFF, 0, 0, 1
+RNAND, 128, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 0, 0, 1
+
+# ROR
+ROR, 1, 1, 0, 0, 1
+ROR, 1, 0, 0, 0, 1
+ROR, 8, 1, 0, 0, 1
+ROR, 8, 0, 0, 0, 1
+ROR, 32, 1, 0, 0, 1
+ROR, 32, 0, 0, 0, 1
+ROR, 64, 0x8000000000000000, 0, 0, 1
+
+# RNOR
+RNOR, 1, 0, 0, 0, 1
+RNOR, 1, 1, 0, 0, 1
+RNOR, 8, 0, 0, 0, 1
+RNOR, 8, 1, 0, 0, 1
+RNOR, 32, 0, 0, 0, 1
+RNOR, 32, 1, 0, 0, 1
+RNOR, 64, 0, 0, 0, 1
+RNOR, 64, 0xFFFFFFFFFFFFFFFF, 0, 0, 1
+
+# RXOR
+RXOR, 1, 0, 0, 0, 1
+RXOR, 1, 1, 0, 0, 1
+RXOR, 2, 1, 0, 0, 1
+RXOR, 2, 3, 0, 0, 1
+RXOR, 8, 21, 0, 0, 1
+RXOR, 8, 51, 0, 0, 1
+RXOR, 16, 0xFFFF, 0, 0, 1
+RXOR, 16, 0x7FFF, 0, 0, 1
+
+# RXNOR
+RXNOR, 1, 0, 0, 0, 1
+RXNOR, 1, 1, 0, 0, 1
+RXNOR, 2, 1, 0, 0, 1
+RXNOR, 2, 3, 0, 0, 1
+RXNOR, 8, 21, 0, 0, 1
+RXNOR, 8, 51, 0, 0, 1
+RXNOR, 16, 0xFFFF, 0, 0, 1
+RXNOR, 16, 0x7FFF, 0, 0, 1
+
+# =================================================================
+# --- Compound Addition Tests (ADD_ASGN) ---
+# =================================================================
+
+# basics
+ADD_ASGN, 16, 1000, 8, 50, 16
+ADD_ASGN, 8, 250, 8, 10, 8
+ADD_ASGN, 32, 1, 64, 0xFFFFFFFFFFFFFFFF, 32
+ADD_ASGN, 64, 0xDEADBEEF, 8, 0, 64
+
+# small widths
+ADD_ASGN, 1, 0, 1, 1, 1
+ADD_ASGN, 1, 1, 1, 1, 1
+ADD_ASGN, 2, 3, 2, 1, 2
+ADD_ASGN, 2, 2, 2, 2, 2
+
+# cross-width
+ADD_ASGN, 8, 0xFF, 16, 1, 8
+ADD_ASGN, 16, 0x7FFF, 8, 1, 16
+ADD_ASGN, 32, 0xFFFFFFFF, 16, 1, 32
+
+# boundary conditions
+ADD_ASGN, 16, 0xFFFF, 16, 1, 16
+ADD_ASGN, 32, 0xFFFFFFFF, 32, 1, 32
+ADD_ASGN, 64, 0xFFFFFFFFFFFFFFFF, 64, 1, 64
+ADD_ASGN, 128, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 128, 1, 128
+
+# zero and identity
+ADD_ASGN, 8, 0, 8, 0, 8
+ADD_ASGN, 16, 123, 16, 0, 16
+ADD_ASGN, 32, 0, 32, 123456, 32
+ADD_ASGN, 64, 0, 64, 0, 64
+
+
+# =================================================================
+# --- Compound Subtraction Tests (SUB_ASGN) ---
+# =================================================================
+
+# basics
+SUB_ASGN, 16, 1000, 8, 50, 16
+SUB_ASGN, 8, 10, 8, 20, 8
+SUB_ASGN, 64, 0xDEADBEEF, 8, 0, 64
+
+# small widths
+SUB_ASGN, 1, 1, 1, 1, 1
+SUB_ASGN, 1, 0, 1, 1, 1
+SUB_ASGN, 2, 0, 2, 1, 2
+SUB_ASGN, 2, 1, 2, 2, 2
+
+# cross-width
+SUB_ASGN, 8, 0xFF, 16, 1, 8
+SUB_ASGN, 16, 0x7FFF, 8, 1, 16
+SUB_ASGN, 32, 0, 64, 1, 32
+
+# boundary conditions
+SUB_ASGN, 16, 0x0000, 16, 1, 16
+SUB_ASGN, 16, 0x8000, 16, 1, 16
+SUB_ASGN, 32, 0x00000000, 32, 1, 32
+SUB_ASGN, 32, 0x80000000, 32, 1, 32
+SUB_ASGN, 64, 0x0000000000000000, 64, 1, 64
+SUB_ASGN, 64, 0x8000000000000000, 64, 1, 64
+SUB_ASGN, 128, 0x00000000000000000000000000000000, 128, 1, 128
+SUB_ASGN, 128, 0x80000000000000000000000000000000, 128, 1, 128
+
+# zero and identity
+SUB_ASGN, 8, 0, 8, 0, 8
+SUB_ASGN, 16, 123, 16, 0, 16
+SUB_ASGN, 32, 0, 32, 0, 32
+SUB_ASGN, 64, 123456789, 64, 0, 64
+
+
+# =================================================================
+# --- Compound Multiplication Tests (MUL_ASGN) ---
+# like lhs *= rhs, result truncated to lhs width
+# =================================================================
+
+# basics
+MUL_ASGN, 8, 10, 8, 5, 8
+MUL_ASGN, 8, 100, 8, 3, 8
+MUL_ASGN, 32, 12345, 16, 0, 32
+MUL_ASGN, 64, 0xDEADBEEF, 8, 1, 64
+
+# small widths
+MUL_ASGN, 1, 0, 1, 1, 1
+MUL_ASGN, 1, 1, 1, 1, 1
+MUL_ASGN, 2, 2, 2, 2, 2
+MUL_ASGN, 2, 3, 2, 3, 2
+
+# cross-width
+MUL_ASGN, 8, 0xFF, 16, 2, 8
+MUL_ASGN, 16, 0x7FFF, 8, 2, 16
+MUL_ASGN, 32, 0xFFFF, 64, 0xFFFF, 32
+
+# boundary conditions
+MUL_ASGN, 16, 0xFFFF, 16, 2, 16
+MUL_ASGN, 32, 0xFFFFFFFF, 32, 2, 32
+MUL_ASGN, 64, 0xFFFFFFFFFFFFFFFF, 64, 2, 64
+MUL_ASGN, 128, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 128, 2, 128
+
+# identity and zero
+MUL_ASGN, 8, 0, 8, 5, 8
+MUL_ASGN, 16, 123, 16, 1, 16
+MUL_ASGN, 32, 456, 32, 0, 32
+MUL_ASGN, 64, 789, 32, 1, 64
+
+
+# =================================================================
+# --- Compound Division Tests (DIV_ASGN) ---
+# like lhs /= rhs, result truncated to lhs width; div/0 → all ones
+# =================================================================
+
+# basics
+DIV_ASGN, 8, 100, 8, 10, 8
+DIV_ASGN, 16, 100, 8, 30, 16
+DIV_ASGN, 64, 0xDEADBEEF, 8, 1, 64
+DIV_ASGN, 16, 1234, 8, 0, 16
+
+# small widths
+DIV_ASGN, 1, 1, 1, 1, 1
+DIV_ASGN, 1, 0, 1, 1, 1
+DIV_ASGN, 2, 3, 2, 2, 2
+DIV_ASGN, 2, 1, 2, 3, 2
+DIV_ASGN, 2, 1, 2, 0, 2
+
+# cross-width
+DIV_ASGN, 8, 0xFF, 16, 2, 8
+DIV_ASGN, 16, 0x7FFF, 8, 2, 16
+DIV_ASGN, 32, 0x10000, 64, 0x10, 32
+
+# boundary conditions
+DIV_ASGN, 16, 0xFFFF, 16, 2, 16
+DIV_ASGN, 32, 0xFFFFFFFF, 32, 2, 32
+DIV_ASGN, 64, 0xFFFFFFFFFFFFFFFF, 64, 2, 64
+DIV_ASGN, 128, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 128, 2, 128
+
+# identities
+DIV_ASGN, 8, 0, 8, 1, 8
+DIV_ASGN, 16, 123, 16, 1, 16
+DIV_ASGN, 32, 456, 32, 1, 32
+DIV_ASGN, 64, 789, 64, 1, 64
+
+
+# =================================================================
+# --- Compound Modulo Tests (MOD_ASGN) ---
+# like lhs %= rhs, result truncated to lhs width; mod/0 → all ones
+# =================================================================
+
+# basics
+MOD_ASGN, 8, 100, 8, 30, 8
+MOD_ASGN, 16, 500, 8, 10, 16
+MOD_ASGN, 32, 123456, 16, 789, 32
+MOD_ASGN, 64, 0xDEADBEEF, 8, 1, 64
+MOD_ASGN, 16, 1234, 8, 0, 16
+
+# small widths
+MOD_ASGN, 1, 1, 1, 1, 1
+MOD_ASGN, 1, 0, 1, 1, 1
+MOD_ASGN, 2, 3, 2, 2, 2
+MOD_ASGN, 2, 1, 2, 3, 2
+MOD_ASGN, 2, 1, 2, 0, 2
+
+# cross-width
+MOD_ASGN, 8, 0xFF, 16, 10, 8
+MOD_ASGN, 16, 0x7FFF, 8, 100, 16
+MOD_ASGN, 32, 0x10000, 64, 0x100, 32
+
+# boundary conditions
+MOD_ASGN, 16, 0xFFFF, 16, 0xFF, 16
+MOD_ASGN, 32, 0xFFFFFFFF, 32, 0xFFFF, 32
+MOD_ASGN, 64, 0xFFFFFFFFFFFFFFFF, 64, 0xFFFFFFFF, 64
+MOD_ASGN, 128, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 128, 0xFFFFFFFFFFFFFFFF, 128
+
+# identities
+MOD_ASGN, 8, 0, 8, 1, 8
+MOD_ASGN, 16, 123, 16, 1, 16
+MOD_ASGN, 32, 456, 32, 1, 32
+MOD_ASGN, 64, 789, 64, 1, 64
+
+
+# =================================================================
+# --- Compound Bitwise AND Tests (AND_ASGN) ---
+# =================================================================
+
+# basics
+AND_ASGN, 8, 0xF0, 8, 0x55, 8
+AND_ASGN, 16, 0xFFFF, 8, 0x0F, 16
+AND_ASGN, 8, 0xFF, 16, 0xFFF0, 8
+
+# small widths
+AND_ASGN, 1, 0, 1, 0, 1
+AND_ASGN, 1, 1, 1, 1, 1
+AND_ASGN, 2, 3, 2, 1, 2
+AND_ASGN, 2, 3, 2, 2, 2
+
+# cross-width
+AND_ASGN, 8, 0xAA, 16, 0x55, 8
+AND_ASGN, 16, 0x00FF, 8, 0xF0, 16
+AND_ASGN, 32, 0xFFFFFFFF, 64, 0x12345678, 32
+
+# boundary conditions
+AND_ASGN, 16, 0x0000, 16, 0xFFFF, 16
+AND_ASGN, 16, 0xFFFF, 16, 0xFFFF, 16
+AND_ASGN, 32, 0xFFFFFFFF, 32, 0, 32
+AND_ASGN, 64, 0xAAAAAAAAAAAAAAAA, 64, 0x5555555555555555, 64
+AND_ASGN, 128, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 128, 0x0, 128
+
+
+# =================================================================
+# --- Compound Bitwise OR Tests (OR_ASGN) ---
+# =================================================================
+
+# basics
+OR_ASGN, 8, 0xF0, 8, 0x05, 8
+OR_ASGN, 16, 0x00FF, 8, 0xF0, 16
+
+# small widths
+OR_ASGN, 1, 0, 1, 0, 1
+OR_ASGN, 1, 1, 1, 0, 1
+OR_ASGN, 2, 1, 2, 2, 2
+OR_ASGN, 2, 3, 2, 1, 2
+
+# cross-width
+OR_ASGN, 8, 0xAA, 16, 0x55, 8
+OR_ASGN, 16, 0x0F0F, 8, 0xF0, 16
+OR_ASGN, 32, 0x12345678, 64, 0xFFFFFFFF, 32
+
+# boundary conditions
+OR_ASGN, 16, 0x0000, 16, 0x0000, 16
+OR_ASGN, 16, 0x0000, 16, 0xFFFF, 16
+OR_ASGN, 16, 0xFFFF, 16, 0xFFFF, 16
+OR_ASGN, 32, 0xFFFFFFFF, 32, 0x0, 32
+OR_ASGN, 64, 0xAAAAAAAAAAAAAAAA, 64, 0x5555555555555555, 64
+OR_ASGN, 128, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 128, 0x0, 128
+
+
+# =================================================================
+# --- Compound Bitwise XOR Tests (XOR_ASGN) ---
+# =================================================================
+
+# basics
+XOR_ASGN, 8, 0xF0, 8, 0x55, 8
+XOR_ASGN, 32, 0xDEADBEEF, 32, 0xDEADBEEF, 32
+
+# small widths
+XOR_ASGN, 1, 0, 1, 0, 1
+XOR_ASGN, 1, 1, 1, 0, 1
+XOR_ASGN, 2, 1, 2, 3, 2
+XOR_ASGN, 2, 3, 2, 3, 2
+
+# cross-width
+XOR_ASGN, 8, 0xAA, 16, 0x55, 8
+XOR_ASGN, 16, 0x0F0F, 8, 0xF0, 16
+XOR_ASGN, 32, 0x12345678, 64, 0xFFFFFFFF, 32
+
+# boundary conditions
+XOR_ASGN, 16, 0x0000, 16, 0x0000, 16
+XOR_ASGN, 16, 0xFFFF, 16, 0xFFFF, 16
+XOR_ASGN, 32, 0xFFFFFFFF, 32, 0xFFFFFFFF, 32
+XOR_ASGN, 64, 0xAAAAAAAAAAAAAAAA, 64, 0x5555555555555555, 64
+XOR_ASGN, 128, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 128, 0x0, 128
+
+
+# =================================================================
+# --- Compound Shift Tests (LSHIFT_ASGN, RSHIFT_ASGN) ---
+# =================================================================
+
+# left shift basics
+LSHIFT_ASGN, 8, 0x0F, 4, 4, 8
+LSHIFT_ASGN, 64, 0xAAAAAAAAAAAAAAAA, 8, 4, 64
+LSHIFT_ASGN, 32, 0xABCD, 8, 0, 32
+LSHIFT_ASGN, 16, 0xFFFF, 8, 16, 16
+
+# left shift edge cases
+LSHIFT_ASGN, 1, 1, 1, 1, 1
+LSHIFT_ASGN, 2, 1, 2, 1, 2
+LSHIFT_ASGN, 8, 0x80, 8, 1, 8
+LSHIFT_ASGN, 16, 0x1234, 16, 15, 16
+LSHIFT_ASGN, 32, 0xFFFFFFFF, 32, 31, 32
+LSHIFT_ASGN, 64, 0x1, 64, 63, 64
+
+# right shift basics
+RSHIFT_ASGN, 8, 0xF0, 4, 4, 8
+RSHIFT_ASGN, 64, 0xAAAAAAAAAAAAAAAA, 8, 4, 64
+RSHIFT_ASGN, 16, 0xFFFF, 8, 16, 16
+
+# right shift edge cases
+RSHIFT_ASGN, 1, 1, 1, 1, 1
+RSHIFT_ASGN, 2, 2, 2, 1, 2
+RSHIFT_ASGN, 8, 0x01, 8, 1, 8
+RSHIFT_ASGN, 16, 0x8000, 16, 15, 16
+RSHIFT_ASGN, 32, 0x80000000, 32, 31, 32
+RSHIFT_ASGN, 64, 0x8000000000000000, 64, 63, 64
+
+
+# =================================================================
+# --- Compound Shift Tests (LSHIFT_ASGN, RSHIFT_ASGN) ---
+# =================================================================
+
+# left shift basics
+LSHIFT_ASGN, 8, 0x0F, 4, 4, 8
+LSHIFT_ASGN, 64, 0xAAAAAAAAAAAAAAAA, 8, 4, 64
+LSHIFT_ASGN, 32, 0xABCD, 8, 0, 32
+LSHIFT_ASGN, 16, 0xFFFF, 8, 16, 16
+
+# left shift edge cases
+LSHIFT_ASGN, 1, 1, 1, 1, 1
+LSHIFT_ASGN, 2, 1, 2, 1, 2
+LSHIFT_ASGN, 8, 0x80, 8, 1, 8
+LSHIFT_ASGN, 16, 0x1234, 16, 15, 16
+LSHIFT_ASGN, 32, 0xFFFFFFFF, 32, 31, 32
+LSHIFT_ASGN, 64, 0x1, 64, 63, 64
+
+# right shift basics
+RSHIFT_ASGN, 8, 0xF0, 4, 4, 8
+RSHIFT_ASGN, 64, 0xAAAAAAAAAAAAAAAA, 8, 4, 64
+RSHIFT_ASGN, 16, 0xFFFF, 8, 16, 16
+
+# right shift edge cases
+RSHIFT_ASGN, 1, 1, 1, 1, 1
+RSHIFT_ASGN, 2, 2, 2, 1, 2
+RSHIFT_ASGN, 8, 0x01, 8, 1, 8
+RSHIFT_ASGN, 16, 0x8000, 16, 15, 16
+RSHIFT_ASGN, 32, 0x80000000, 32, 31, 32
+RSHIFT_ASGN, 64, 0x8000000000000000, 64, 63, 64
+
+
+# =================================================================
+# --- Logical Implication and Equivalence Tests ---
+# semantics: non-zero → true; zero → false; result width = 1
+# =================================================================
+
+# IMPLIES
+IMPLIES, 8, 0, 8, 0, 1
+IMPLIES, 16, 0, 32, 0xFFFFFFFF, 1
+IMPLIES, 8, 123, 8, 0, 1
+IMPLIES, 64, 0xDEADBEEF, 8, 255, 1
+
+IMPLIES, 1, 0, 1, 0, 1
+IMPLIES, 1, 0, 1, 1, 1
+IMPLIES, 1, 1, 1, 0, 1
+IMPLIES, 1, 1, 1, 1, 1
+
+IMPLIES, 7, 0, 9, 0, 1
+IMPLIES, 7, 0, 9, 0x100, 1
+IMPLIES, 7, 1, 9, 0, 1
+IMPLIES, 7, 1, 9, 0x100, 1
+
+IMPLIES, 32, 0, 64, 0, 1
+IMPLIES, 32, 1, 64, 0, 1
+IMPLIES, 32, 0, 64, 1, 1
+IMPLIES, 32, 123456, 64, 789, 1
+
+IMPLIES, 128, 0, 128, 0, 1
+IMPLIES, 128, 0, 128, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 1
+IMPLIES, 128, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 1, 0, 1
+IMPLIES, 65, 0x1, 128, 0x80000000000000000000000000000000, 1
+IMPLIES, 9, 0x1FF, 7, 0, 1
+IMPLIES, 9, 0x1FF, 7, 1, 1
+
+# EQUIV
+EQUIV, 8, 0, 8, 0, 1
+EQUIV, 16, 0, 8, 1, 1
+EQUIV, 8, 1, 16, 0, 1
+EQUIV, 32, 0xABCD, 64, 0x1234, 1
+
+EQUIV, 1, 0, 1, 0, 1
+EQUIV, 1, 0, 1, 1, 1
+EQUIV, 1, 1, 1, 0, 1
+EQUIV, 1, 1, 1, 1, 1
+
+EQUIV, 7, 0, 9, 0, 1
+EQUIV, 7, 0, 9, 0x1, 1
+EQUIV, 7, 1, 9, 0, 1
+EQUIV, 7, 1, 9, 0x1, 1
+
+EQUIV, 8, 255, 16, 0x8000, 1
+EQUIV, 32, 1, 64, 0xFFFFFFFF, 1
+EQUIV, 32, 0, 64, 0x1, 1
+EQUIV, 64, 0x8000000000000000, 64, 0x1, 1
+
+EQUIV, 128, 0, 128, 0, 1
+EQUIV, 128, 0, 128, 1, 1
+EQUIV, 128, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 128, 1, 1
+EQUIV, 128, 0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA, 128, 0x55555555555555555555555555555555, 1
+
+
+# =================================================================
+# --- Unary Arithmetic Tests (UPLUS, UMINUS) ---
+# semantics: unsigned; apply width mask; UPLUS is a no-op; UMINUS = (-x) mod 2^w
+# =================================================================
+
+# UPLUS — basics
+UPLUS, 32, 12345, 0, 0, 32
+UPLUS, 8, 0, 0, 0, 8
+UPLUS, 16, 0xFFFF, 0, 0, 16
+UPLUS, 64, 0xDEADBEEFCAFEBABE, 0, 0, 64
+UPLUS, 128, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 0, 0, 128
+
+# UPLUS — width changes (trunc/widen)
+UPLUS, 16, 0x1234, 0, 0, 8
+UPLUS, 8, 0x7F, 0, 0, 16
+UPLUS, 13, 0x0A5A, 0, 0, 13
+UPLUS, 9, 0x1FF, 0, 0, 9
+
+# UMINUS — tiny widths
+UMINUS, 1, 0, 0, 0, 1
+UMINUS, 1, 1, 0, 0, 1
+UMINUS, 2, 0, 0, 0, 2
+UMINUS, 2, 1, 0, 0, 2
+UMINUS, 2, 2, 0, 0, 2
+UMINUS, 2, 3, 0, 0, 2
+
+# UMINUS — byte edges
+UMINUS, 7, 0x40, 0, 0, 7
+UMINUS, 7, 0x7F, 0, 0, 7
+UMINUS, 8, 1, 0, 0, 8
+UMINUS, 8, 10, 0, 0, 8
+UMINUS, 8, 0x80, 0, 0, 8
+UMINUS, 8, 0xFF, 0, 0, 8
+
+# UMINUS — wider widths
+UMINUS, 16, 0, 0, 0, 16
+UMINUS, 16, 1, 0, 0, 16
+UMINUS, 16, 0x8000, 0, 0, 16
+UMINUS, 16, 0xFFFF, 0, 0, 16
+UMINUS, 32, 10, 0, 0, 32
+UMINUS, 32, 0xDEADBEEF, 0, 0, 32
+UMINUS, 32, 0x80000000, 0, 0, 32
+UMINUS, 32, 0xFFFFFFFF, 0, 0, 32
+UMINUS, 64, 1, 0, 0, 64
+UMINUS, 64, 0x8000000000000000, 0, 0, 64
+UMINUS, 64, 0xFFFFFFFFFFFFFFFF, 0, 0, 64
+UMINUS, 128, 1, 0, 0, 128
+UMINUS, 128, 0x80000000000000000000000000000000, 0, 0, 128
+UMINUS, 128, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF, 0, 0, 128
+
+# UMINUS — width changes (trunc/widen)
+# UMINUS, 8, 1, 0, 0, 16
+# UMINUS, 16, 0x8000, 0, 0, 32
+UMINUS, 32, 0x00010000, 0, 0, 8
+UMINUS, 13, 0x0A5A, 0, 0, 13
+UMINUS, 9, 0x1FF, 0, 0, 9
