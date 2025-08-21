@@ -36,9 +36,9 @@ struct fmt::formatter<ChangeType> {
 template <int N>
 static ChangeType change_calculate(Bit<N> before, Bit<N> after) {
     if constexpr (N == 1) {
-        if (before == 0 && after == 1) {
+        if (before == Bit<1>(0) && after == Bit<1>(1)) {
             return ChangeType::Posedge;
-        } else if (before == 1 && after == 0) {
+        } else if (before == Bit<1>(1) && after == Bit<1>(0)) {
             return ChangeType::Negedge;
         }
         return ChangeType::NoChange;
