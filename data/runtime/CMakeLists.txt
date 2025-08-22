@@ -17,6 +17,7 @@ add_executable(
     src/codegen/module.cpp
     src/runtime/Runtime.cpp
     src/libs/format.cc
+    src/libs/os.cc
 )
 
 target_link_libraries(run_simulation)
