@@ -1,9 +1,15 @@
 #pragma once
 
+#include <optional>
+#include <string>
+
+#include <fmt/os.h>
+
 #include "Bit.hpp"
 #include "Process.hpp"
 
 #include "../codegen/module.hpp"
+#include "Vcd.hpp"
 
 using ProcType = Process<StateType>;
 
@@ -22,11 +28,15 @@ public:
         return m_states[idx];
     }
 
+    void open_vcd(const std::string path, int circuit_idx);
+    void dump_to_vcd();
 private:
     std::vector<ProcType> m_processes;
     std::vector<StateType> m_states;
     std::vector<StateType> m_previous_states;
     int m_cycles;
+
+    std::optional<VcdDump> m_vcd;
 };
 
  

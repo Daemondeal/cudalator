@@ -4,6 +4,7 @@
 #include "../runtime/Bit.hpp"
 #include <vector>
 #include <cstddef>
+#include <fmt/os.h>
 
 struct state_work__double_int_adder
 {
@@ -26,4 +27,6 @@ std::vector<Process<state_work__double_int_adder>> make_processes();
 using DiffType = diff_work__double_int_adder;
 using StateType = state_work__double_int_adder;
 
+void state_vcd_dump_names(fmt::ostream &file);
+void state_vcd_dump_values(state_work__double_int_adder *state, int tid, fmt::ostream &file);
 
