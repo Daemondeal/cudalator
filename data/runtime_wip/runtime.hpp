@@ -964,6 +964,42 @@ public:
         return ss.str();
     }
 
+    /**
+     * @brief Performs bit selection
+     * @param index  the bit position to access (0 is the LSB)
+     */
+    Bit<1> select_bit(int index) const {
+        // if (index < 0 || index >= N) { throw std::out_of_range("Index out of
+        // bounds"); }
+
+        int chunk_index = index / 32;
+        int bit_in_chunk = index % 32;
+
+        // we can right shift & maks
+        uint32_t bit_value = (chunks[chunk_index] >> bit_in_chunk) & 1;
+
+        return Bit<1>(bit_value);
+    }
+
+    /**
+     * @brief part selection
+     * @tparam MSB most significant bit of the slice (inclusive)
+     * @tparam LSB least significant bit of the slice (inclusive)
+     */
+    template <int MSB, int LSB>
+    auto select_part() const -> Bit<MSB - LSB + 1> {
+        static_assert(MSB >= LSB, "MSB must be greater than or equal to LSB");
+        static_assert(MSB < N, "MSB is out of bounds for this Bit vector");
+
+        constexpr int SLICE_WIDTH = MSB - LSB + 1;
+
+        // right-shift so to move the lsb of the slice to position 0
+        auto shifted_val = (*this) >> LSB;
+
+        // = will truncate and the result is already of the desired length
+        return Bit<SLICE_WIDTH>(shifted_val);
+    }
+
 private:
     /**
      * ============ Private helper functions ============
