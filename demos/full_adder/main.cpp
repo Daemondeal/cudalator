@@ -4,15 +4,21 @@
 #include "runtime/Runtime.hpp"
 
 static void apply_input(StateType* dut, int circuit_idx, int cycle) {
+    uint64_t a  = (uint64_t)dut[circuit_idx].a;
+    uint64_t b  = (uint64_t)dut[circuit_idx].b;
+    uint64_t cin = (uint64_t)dut[circuit_idx].cin;
+    uint64_t sum = ((uint64_t)dut[circuit_idx].s) + ((uint64_t)(dut[circuit_idx].cout) << 1);
+    uint64_t sum_expected = a + b + cin;
+
     fmt::println(
-        "[{:>2}] {} + {} + {} = {} {}",
+        "[{:>2}] {} + {} + {} = {} (expect {})",
         cycle,
-        dut[circuit_idx].a,
-        dut[circuit_idx].b,
-        dut[circuit_idx].cin,
-        dut[circuit_idx].s,
-        dut[circuit_idx].cout
+        a, b, cin,
+        sum, sum_expected
     );
+    if (sum != sum_expected) {
+        fmt::println("-  WRONG");
+    }
 
     static int64_t random = 81273981;
 

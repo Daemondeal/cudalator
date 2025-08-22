@@ -35,8 +35,9 @@ private:
     std::vector<StateType> m_states;
     std::vector<StateType> m_previous_states;
     int m_cycles;
-
     std::optional<VcdDump> m_vcd;
+
+    void first_eval();
 };
 
  
