@@ -148,6 +148,7 @@ impl<'a> Codegen<'a> {
         emit!(header, "#include \"../runtime/ChangeType.hpp\"\n")?;
         emit!(header, "#include <vector>\n")?;
         emit!(header, "#include <cstddef>\n")?;
+        emit!(header, "#include <fmt/os.h>\n")?;
         header.emit_empty_line()?;
 
         self.codegen_state_header(header)?;
@@ -162,8 +163,14 @@ impl<'a> Codegen<'a> {
         self.codegen_top_struct_header(header)?;
         header.emit_empty_line()?;
 
+        self.codegen_vcd_dump_header(header)?;
+        header.emit_empty_line()?;
+
         // Source
         emit!(source, "#include \"module.hpp\"\n")?;
+        source.emit_empty_line()?;
+
+        emit!(header, "#include \"../runtime/Vcd.hpp\"\n")?;
         source.emit_empty_line()?;
 
         self.codegen_diff_source(source)?;
@@ -176,6 +183,9 @@ impl<'a> Codegen<'a> {
         }
 
         self.codegen_process_container_source(source)?;
+        source.emit_empty_line()?;
+
+        self.codegen_vcd_dump_source(source)?;
         source.emit_empty_line()?;
 
         Ok(())
@@ -743,6 +753,14 @@ impl<'a> Codegen<'a> {
         }
     }
 
+    fn signal_vcd_name(&self, idx: SignalIdx) -> &str {
+        let signal = self.ast.get_signal(idx);
+
+        signal.full_name.split_once('.')
+          .map(|(_, rest)| rest)
+          .unwrap_or(&signal.full_name)
+    }
+
     // Generate the name to refer to a signal inside a kernel
     fn codegen_signal_ref<W: Write>(
         &self,
@@ -761,6 +779,66 @@ impl<'a> Codegen<'a> {
                 emit!(file, "state[tid].{}", self.signal_name(idx))?;
             }
         }
+
+        Ok(())
+    }
+
+    fn codegen_vcd_dump_header<W: Write>(
+        &self,
+        header: &mut CppEmitter<'a, W>,
+    ) -> Result<()> {
+        header.line_start()?;
+        emit!(header, "void state_vcd_dump_names(fmt::ostream &file)")?;
+        header.line_end_semicolon()?;
+
+        header.line_start()?;
+        emit!(header, "void state_vcd_dump_values(state_{} *state, int tid, fmt::ostream &file)", self.top_name)?;
+        header.line_end_semicolon()?;
+
+        Ok(())
+    }
+
+    fn codegen_vcd_dump_source<W: Write>(
+        &self,
+        source: &mut CppEmitter<'a, W>,
+    ) -> Result<()> {
+
+        source.line_start()?;
+        emit!(source, "void state_vcd_dump_names(fmt::ostream &file)")?;
+        source.line_end()?;
+
+        source.block_start()?;
+        for idx in gather_all_static_signals(self.ast) {
+            let signal = self.ast.get_signal(idx);
+            source.line_start()?;
+            emit!(
+                source,
+                "file.print(\"$var reg {} >{} {} $end\\n\")",
+                signal.size(self.ast),
+                idx.get_idx(),
+                self.signal_vcd_name(idx)
+            )?;
+            source.line_end_semicolon()?;
+        }
+        source.block_end()?;
+
+        source.line_start()?;
+        emit!(source, "void state_vcd_dump_values(state_{} *state, int tid, fmt::ostream &file)", self.top_name)?;
+        source.line_end()?;
+
+        source.block_start()?;
+        for idx in gather_all_static_signals(self.ast) {
+            source.line_start()?;
+            emit!(
+                source,
+                "file.print(\"b{{}} >{}\\n\", vcd_dump_value(",
+                idx.get_idx(),
+            )?;
+            self.codegen_signal_ref(source, idx)?;
+            emit!(source, "))")?;
+            source.line_end_semicolon()?;
+        }
+        source.block_end()?;
 
         Ok(())
     }

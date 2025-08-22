@@ -964,6 +964,32 @@ public:
         return ss.str();
     }
 
+    std::string to_binary_string() {
+        if (N == 0) return "0";
+
+        std::stringstream ss;
+
+        int msb_idx = num_chunks - 1;
+        int bits_in_msb = (N % 32 == 0) ? 32 : (N % 32);
+
+        // Mask the most significant chunk
+        uint32_t msb_val = chunks[msb_idx] & mask[msb_idx];
+
+        // Print MSB chunk
+        for (int i = bits_in_msb - 1; i >= 0; --i) {
+            ss << ((msb_val >> i) & 1);
+        }
+
+        // Print remaining chunks
+        for (int i = msb_idx - 1; i >= 0; --i) {
+            for (int j = 31; j >= 0; --j) {
+                ss << ((chunks[i] >> j) & 1);
+            }
+        }
+
+        return ss.str();
+    }
+
     template <typename FormatContext>
     static auto format(const Bit<N>& n, FormatContext& ctx) {
         if (n.chunks.size() == 0) {
