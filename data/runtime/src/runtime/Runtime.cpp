@@ -20,6 +20,8 @@ Circuit::Circuit(int number_of_circuits)
     }
 
     m_processes = make_processes();
+
+    first_eval();
 }
 
 void Circuit::apply_input(ApplyInputFunc func)
@@ -35,6 +37,7 @@ void Circuit::open_vcd(const std::string path, int circuit_idx) {
     m_vcd.emplace(std::move(fp), circuit_idx);
     m_vcd->print_header();
 }
+
 
 void Circuit::dump_to_vcd() {
     if (m_vcd.has_value()) {
@@ -83,7 +86,6 @@ void Circuit::eval() {
 
             if (should_run) {
                 ready_queue.push_back(proc);
-                break;
             }
         }
 
@@ -106,4 +108,14 @@ void Circuit::eval() {
     clone_state(m_states, m_previous_states);
 
     dump_to_vcd();
+}
+
+
+void Circuit::first_eval() {
+    for (auto & proc : m_processes) {
+        proc.function_pointer(&m_states[0], 1);
+    }
+
+    eval();
+    m_cycles--;
 }

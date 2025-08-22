@@ -46,12 +46,11 @@ module full_adder(
     logic net1;
     logic net2;
     logic net3;
-    logic net4;
 
     XOR _g1 (.x(a), .y(b), .z(net1));
     XOR _g2 (.x(net1), .y(cin), .z(s));
-    AND _g3 (.x(net1), .y(net2), .z(net3));
-    AND _g4 (.x(a), .y(b), .z(net4));
-    OR  _g5 (.x(net3), .y(net4), .z(cout));
+    AND _g3 (.x(net1), .y(cin), .z(net2));
+    AND _g4 (.x(a), .y(b), .z(net3));
+    OR  _g5 (.x(net2), .y(net3), .z(cout));
 
 endmodule : full_adder
