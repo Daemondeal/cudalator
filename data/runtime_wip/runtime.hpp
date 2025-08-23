@@ -1000,6 +1000,18 @@ public:
         return Bit<SLICE_WIDTH>(shifted_val);
     }
 
+    /**
+     * @brief same thing of select_part to be used in cases where there is
+     * variable position
+     */
+    template <int SLICE_WIDTH>
+    auto select_part_indexed(int lsb_start_index) const -> Bit<SLICE_WIDTH> {
+        static_assert(SLICE_WIDTH <= N,
+                      "Slice width cannot be larger than the vector");
+        auto shifted_val = (*this) >> lsb_start_index;
+        return Bit<SLICE_WIDTH>(shifted_val);
+    }
+
 private:
     /**
      * ============ Private helper functions ============
