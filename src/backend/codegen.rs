@@ -229,6 +229,7 @@ impl<'a> Codegen<'a> {
 
         self.codegen_tid(source)?;
 
+
         for (i, signal) in top_scope.signals.iter().enumerate() {
             source.line_start()?;
 
@@ -345,6 +346,12 @@ impl<'a> Codegen<'a> {
         header.emit_empty_line()?;
 
         header.line_start()?;
+        match self.target {
+            CodegenTarget::CUDA => {
+                emit!(header, "__global__ ")?;
+            }
+            _ => {}
+        }
         emit!(
             header,
             "void state_calculate_diff(state_{}* start, state_{}* end, diff_{}* diffs)",
@@ -739,10 +746,13 @@ impl<'a> Codegen<'a> {
                 emit!(source, "int tid = 0")?;
             }
             CodegenTarget::CUDA => {
-                emit!(source, "int tid = blockIdx.x * blockSize.x + threadIdx.x")?;
+                emit!(source, "int tid = blockIdx.x * blockDim.x + threadIdx.x")?;
+                source.line_end_semicolon()?;
+                source.line_start()?;
+                emit!(source, "if (tid > len) return")?;
+                source.line_end_semicolon()?;
             }
         }
-        source.line_end_semicolon()?;
 
         Ok(())
     }
