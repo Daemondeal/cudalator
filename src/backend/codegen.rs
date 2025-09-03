@@ -852,7 +852,7 @@ impl<'a> Codegen<'a> {
                 emit!(source, "int tid = blockIdx.x * blockDim.x + threadIdx.x")?;
                 source.line_end_semicolon()?;
                 source.line_start()?;
-                emit!(source, "if (tid > len) return")?;
+                emit!(source, "if (tid >= len) return")?;
                 source.line_end_semicolon()?;
             }
         }
