@@ -14,13 +14,6 @@ pub enum CodegenTarget {
     CUDA,
 }
 
-enum OperatorType {
-    Infix(&'static str),
-    Function(&'static str),
-    // TODO: Do this properly
-    // Prefix(&'static str),
-}
-
 struct CppEmitter<'a, W: Write> {
     writer: &'a mut W,
     indent_level: i32,
@@ -597,66 +590,77 @@ impl<'a> Codegen<'a> {
         match &expr.kind {
             ExprKind::Constant { constant } => self.codegen_constant(file, *constant)?,
             ExprKind::Unary { op, expr } => {
+                enum UnaryOpType {
+                    Prefix(&'static str),
+                    Function(&'static str),
+                }
+
                 let op_equivalent = match op {
-                    // TODO: Do this properly these should be prefix
-                    UnaryOperator::UnaryMinus => OperatorType::Infix("-"),
-                    UnaryOperator::UnaryPlus => OperatorType::Infix("+"),
-                    UnaryOperator::Not => OperatorType::Infix("!"),
-                    UnaryOperator::BinaryNegation => OperatorType::Infix("~"),
-                    UnaryOperator::ReductionAnd => todo!("codegen ReductionAnd"),
-                    UnaryOperator::ReductionNand => todo!("codegen ReductionNand"),
-                    UnaryOperator::ReductionOr => todo!("codegen ReductionOr"),
-                    UnaryOperator::ReductionNor => todo!("codegen ReductionNor"),
-                    UnaryOperator::ReductionXor => todo!("codegen ReductionXor"),
-                    UnaryOperator::ReductionXnor => todo!("codegen ReductionXnor"),
+                    UnaryOperator::UnaryMinus => UnaryOpType::Prefix("-"),
+                    UnaryOperator::UnaryPlus => UnaryOpType::Prefix("+"),
+                    UnaryOperator::Not => UnaryOpType::Prefix("!"),
+                    UnaryOperator::BinaryNegation => UnaryOpType::Prefix("~"),
+                    UnaryOperator::ReductionAnd => UnaryOpType::Function("reduce_and"),
+                    UnaryOperator::ReductionNand => UnaryOpType::Function("reduce_nand"),
+                    UnaryOperator::ReductionOr => UnaryOpType::Function("reduce_or"),
+                    UnaryOperator::ReductionNor => UnaryOpType::Function("reduce_nor"),
+                    UnaryOperator::ReductionXor => UnaryOpType::Function("reduce_xor"),
+                    UnaryOperator::ReductionXnor => UnaryOpType::Function("reduce_xnor"),
                     UnaryOperator::Posedge => unreachable!("should not codegen posedge"),
                     UnaryOperator::Negedge => unreachable!("should not codegen negedge"),
                 };
 
                 match op_equivalent {
-                    OperatorType::Infix(name) => {
+                    UnaryOpType::Prefix(name) => {
                         emit!(file, "{}", name)?;
                         self.codegen_expr(file, *expr)?;
                     }
 
-                    OperatorType::Function(name) => {
+                    UnaryOpType::Function(name) => {
                         self.codegen_expr(file, *expr)?;
                         emit!(file, ".{}()", name)?;
                     }
                 };
             }
             ExprKind::Binary { op, lhs, rhs } => {
+                enum BinaryOpType {
+                    Infix(&'static str),
+                    Function(&'static str),
+                }
+
                 let op_equivalent = match op {
-                    BinaryOperator::Subtraction => OperatorType::Infix("-"),
-                    BinaryOperator::Division => OperatorType::Infix("/"),
-                    BinaryOperator::Modulo => OperatorType::Infix("%"),
-                    BinaryOperator::Equality => OperatorType::Infix("=="),
-                    BinaryOperator::NotEquality => OperatorType::Infix("!="),
-                    BinaryOperator::GreaterThan => OperatorType::Infix(">"),
-                    BinaryOperator::GreaterThanEq => OperatorType::Infix(">="),
-                    BinaryOperator::LessThan => OperatorType::Infix("<"),
-                    BinaryOperator::LessThanEq => OperatorType::Infix("<="),
-                    BinaryOperator::LeftShift => OperatorType::Infix("<<"),
-                    BinaryOperator::RightShift => OperatorType::Infix(">>"),
-                    BinaryOperator::Addition => OperatorType::Infix("+"),
-                    BinaryOperator::Multiplication => OperatorType::Infix("*"),
-                    BinaryOperator::Power => OperatorType::Function("pow"),
-                    BinaryOperator::LogicalAnd => todo!("codegen LogicalAnd"),
-                    BinaryOperator::LogicalOr => todo!("codegen LogicalOr"),
-                    BinaryOperator::BitwiseAnd => OperatorType::Infix("&"),
-                    BinaryOperator::BitwiseOr => OperatorType::Infix("|"),
-                    BinaryOperator::BitwiseXor => OperatorType::Infix("^"),
-                    BinaryOperator::BitwiseXnor => todo!("codegen BitwiseXnor"),
+                    BinaryOperator::Subtraction => BinaryOpType::Infix("-"),
+                    BinaryOperator::Division => BinaryOpType::Infix("/"),
+                    BinaryOperator::Modulo => BinaryOpType::Infix("%"),
+                    BinaryOperator::Equality => BinaryOpType::Infix("=="),
+                    BinaryOperator::NotEquality => BinaryOpType::Infix("!="),
+                    BinaryOperator::GreaterThan => BinaryOpType::Infix(">"),
+                    BinaryOperator::GreaterThanEq => BinaryOpType::Infix(">="),
+                    BinaryOperator::LessThan => BinaryOpType::Infix("<"),
+                    BinaryOperator::LessThanEq => BinaryOpType::Infix("<="),
+                    BinaryOperator::LeftShift => BinaryOpType::Infix("<<"),
+                    BinaryOperator::RightShift => BinaryOpType::Infix(">>"),
+                    BinaryOperator::Addition => BinaryOpType::Infix("+"),
+                    BinaryOperator::Multiplication => BinaryOpType::Infix("*"),
+                    BinaryOperator::Power => BinaryOpType::Function("pow"),
+                    BinaryOperator::LogicalAnd => BinaryOpType::Infix("&&"),
+                    BinaryOperator::LogicalOr => BinaryOpType::Infix("||"),
+                    BinaryOperator::BitwiseAnd => BinaryOpType::Infix("&"),
+                    BinaryOperator::BitwiseOr => BinaryOpType::Infix("|"),
+                    BinaryOperator::BitwiseXor => BinaryOpType::Infix("^"),
+                    BinaryOperator::BitwiseXnor => BinaryOpType::Function("xnor"),
                 };
 
                 match op_equivalent {
-                    OperatorType::Infix(name) => {
+                    BinaryOpType::Infix(name) => {
+                        emit!(file, "(")?;
                         self.codegen_expr(file, *lhs)?;
                         emit!(file, " {} ", name)?;
                         self.codegen_expr(file, *rhs)?;
+                        emit!(file, ")")?;
                     }
 
-                    OperatorType::Function(name) => {
+                    BinaryOpType::Function(name) => {
                         self.codegen_expr(file, *lhs)?;
                         emit!(file, ".{}(", name)?;
                         self.codegen_expr(file, *rhs)?;
