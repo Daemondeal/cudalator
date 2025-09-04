@@ -39,3 +39,4 @@ simv
 
 # clang-format
 .clang-format
+.clangd
