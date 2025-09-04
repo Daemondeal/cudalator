@@ -2,12 +2,12 @@
 
 #include <array>
 #include <cstdint>
+#include <fmt/format.h>
 #include <initializer_list>
 #include <iomanip>
 #include <sstream>
 #include <string>
 #include <type_traits>
-#include <fmt/core.h>
 
 /**
  * (operators), (name), (implemented)
@@ -41,9 +41,6 @@
  * (<<{} >>{}), (Stream operators), (i would like not to implement also these)
  */
 
-/**
- * Lo shift ha bisogno di essere castato
- */
 template <int N>
 class Bit {
     static_assert(N > 0 && N <= 128, "The maximum supported bit width is 128");
@@ -921,35 +918,136 @@ public:
     }
 
     /**
+     * @brief Performs bit selection
+     * @param index  the bit position to access (0 is the LSB)
+     */
+    Bit<1> select_bit(int index) const {
+        // if (index < 0 || index >= N) { throw std::out_of_range("Index out of
+        // bounds"); }
+
+        int chunk_index = index / 32;
+        int bit_in_chunk = index % 32;
+
+        // we can right shift & maks
+        uint32_t bit_value = (chunks[chunk_index] >> bit_in_chunk) & 1;
+
+        return Bit<1>(bit_value);
+    }
+
+    /**
+     * @brief part selection
+     * @tparam MSB most significant bit of the slice (inclusive)
+     * @tparam LSB least significant bit of the slice (inclusive)
+     */
+    template <int MSB, int LSB>
+    auto select_part() const -> Bit<MSB - LSB + 1> {
+        static_assert(MSB >= LSB, "MSB must be greater than or equal to LSB");
+        static_assert(MSB < N, "MSB is out of bounds for this Bit vector");
+
+        constexpr int SLICE_WIDTH = MSB - LSB + 1;
+
+        // right-shift so to move the lsb of the slice to position 0
+        auto shifted_val = (*this) >> LSB;
+
+        // = will truncate and the result is already of the desired length
+        return Bit<SLICE_WIDTH>(shifted_val);
+    }
+
+    /**
+     * @brief same thing of select_part to be used in cases where there is
+     * variable position
+     */
+    template <int SLICE_WIDTH>
+    auto select_part_indexed(int lsb_start_index) const -> Bit<SLICE_WIDTH> {
+        static_assert(SLICE_WIDTH <= N,
+                      "Slice width cannot be larger than the vector");
+        auto shifted_val = (*this) >> lsb_start_index;
+        return Bit<SLICE_WIDTH>(shifted_val);
+    }
+
+    /**
+     * @brief part-select assignment (writing to a slice with compile-time
+     * bounds) aka Verilog's a[MSB:LSB] = value
+     * @tparam MSB of the slice (inclusive)
+     * @tparam LSB of the slice (inclusive)
+     * @tparam M width of the value being assigned. Must match the slice width.
+     * @param value bit vector to assign to the slice
+     */
+    template <int MSB, int LSB, int M>
+    void assign_part(const Bit<M>& value) {
+        constexpr int SLICE_WIDTH = MSB - LSB + 1;
+        static_assert(MSB >= LSB, "MSB must be greater than or equal to LSB");
+        static_assert(MSB < N, "MSB is out of bounds for this Bit vector");
+        static_assert(M == SLICE_WIDTH,
+                      "Value width must match the slice width");
+
+        // create the mask
+        Bit<SLICE_WIDTH> slice_ones =
+            ~Bit<SLICE_WIDTH>(0); // 1s for the slice width
+        Bit<N> mask = Bit<N>(slice_ones) << LSB;
+
+        // shift the new value into the correct position
+        Bit<N> shifted_value = Bit<N>(value) << LSB;
+
+        *this &= ~mask;         // "hole" in the vector
+        *this |= shifted_value; // fills the "hole" with the new value
+    }
+
+    /**
+     * @brief Part-select assignment (writing to a slice with a runtime start
+     * index).
+     * @tparam M The width of the value being assigned.
+     * @param lsb_start_index The starting LSB position for the assignment.
+     * @param value The Bit vector to assign to the slice.
+     */
+    template <int M>
+    void assign_part_indexed(int lsb_start_index, const Bit<M>& value) {
+        // Runtime check for bounds to prevent errors.
+        if (lsb_start_index < 0 || lsb_start_index + M > N) {
+            // In production code, you might throw an exception like
+            // std::out_of_range.
+            return;
+        }
+
+        // 1. Create the mask at runtime.
+        Bit<M> slice_ones = ~Bit<M>(0);
+        Bit<N> mask = Bit<N>(slice_ones) << lsb_start_index;
+
+        // 2. Prepare the value at runtime.
+        Bit<N> shifted_value = Bit<N>(value) << lsb_start_index;
+
+        // 3. Clear the target bits and then set them.
+        *this &= ~mask;
+        *this |= shifted_value;
+    }
+
+    /**
      * @brief Converts the Bit vector to a hexadecimal string.
      * Mimics the behavior of Verilog's '$display("%h", ...)' for comparison
      * @return A std::string containing the hexadecimal representation
      */
-    // In runtime.hpp, replace your to_string() method with this one.
-    // No other changes are needed.
     std::string to_string() const {
         std::stringstream ss;
-        ss << std::hex; // Set the stream to output in hexadecimal format
+        ss << std::hex; // stream output in hexadecimal format
 
-        // We handle the most significant chunk first, as it may not be full.
+        // most significant chunk first, as it may not be full
         int msb_chunk_idx = num_chunks - 1;
 
-        // This is the key fix: Apply the mask for the most significant chunk
-        // to ensure we only consider the valid bits for this Bit<N> object.
+        // apply the mask for the most significant chunk to ensure we only
+        // consider the valid bits for this Bit<N> object
         uint32_t msb_val = chunks[msb_chunk_idx] & mask[msb_chunk_idx];
 
-        // Compute how many bits are in the last chunk
+        // compute how many bits are in the last chunk
         int bits_in_msb = (N % 32 == 0) ? 32 : (N % 32);
-
-        // Compute the number of hex characters needed for those bits
+        // compute the number of hex characters needed for those bits
         int hex_chars_in_msb = (bits_in_msb + 3) / 4;
 
-        // Print the correctly masked and sized most significant chunk
+        // print the correctly masked and sized most significant chunk
         if (hex_chars_in_msb > 0) {
             ss << std::setw(hex_chars_in_msb) << std::setfill('0') << msb_val;
         }
 
-        // Print the rest of the chunks (if any) from most to least significant
+        // print the rest of the chunks (if any) from most to least significant
         for (int i = msb_chunk_idx - 1; i >= 0; --i) {
             // Lower chunks are always full, so they are 8 hex characters (32
             // bits)
@@ -965,7 +1063,8 @@ public:
     }
 
     std::string to_binary_string() {
-        if (N == 0) return "0";
+        if (N == 0)
+            return "0";
 
         std::stringstream ss;
 
@@ -996,12 +1095,8 @@ public:
             return fmt::format_to(ctx.out(), "{}'h0", N);
         }
 
-        auto out = fmt::format_to(
-            ctx.out(),
-            "{}'h{:X}",
-            N,
-            n.chunks[n.chunks.size()-1]
-        );
+        auto out = fmt::format_to(ctx.out(), "{}'h{:X}", N,
+                                  n.chunks[n.chunks.size() - 1]);
 
         for (ssize_t j = n.chunks.size() - 2; j >= 0; j--) {
             out = fmt::format_to(out, "{:08X}", n.chunks[j]);
@@ -1145,14 +1240,10 @@ private:
 
 template <int N>
 struct fmt::formatter<Bit<N>> {
-
-    constexpr auto parse(format_parse_context& ctx) {
-        return ctx.begin();
-    }
+    constexpr auto parse(format_parse_context& ctx) { return ctx.begin(); }
 
     template <typename FormatContext>
     auto format(const Bit<N>& n, FormatContext& ctx) const {
         return Bit<N>::format(n, ctx);
     }
 };
-
