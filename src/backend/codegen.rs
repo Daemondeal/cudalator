@@ -744,6 +744,7 @@ impl<'a> Codegen<'a> {
         match self.target {
             CodegenTarget::CPU => {
                 emit!(source, "int tid = 0")?;
+                source.line_end_semicolon()?;
             }
             CodegenTarget::CUDA => {
                 emit!(source, "int tid = blockIdx.x * blockDim.x + threadIdx.x")?;
