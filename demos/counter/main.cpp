@@ -1,17 +1,12 @@
-#include <fmt/core.h>
+#include "fmt/format.h"
 
 #include "codegen/module.hpp"
 #include "runtime/Runtime.hpp"
 
 static void apply_input(StateType* dut, int circuit_idx, int cycle) {
-    fmt::println(
-        "[{:>2}] clk: {} rst_n: {} cnt: {} tc: {}",
-        cycle,
-        dut[circuit_idx].i_clk,
-        dut[circuit_idx].i_rst_n,
-        dut[circuit_idx].o_cnt,
-        dut[circuit_idx].o_tc
-    );
+    fmt::println("[{:>2}] clk: {} rst_n: {} cnt: {} tc: {}", cycle,
+                 dut[circuit_idx].i_clk, dut[circuit_idx].i_rst_n,
+                 dut[circuit_idx].o_cnt, dut[circuit_idx].o_tc);
 
     dut[circuit_idx].i_clk = Bit<1>(cycle % 2);
     if (cycle < 4) {

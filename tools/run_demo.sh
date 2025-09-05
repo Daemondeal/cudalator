@@ -59,10 +59,12 @@ fi
 if [ "$REMOTE" = true ]; then
   # Remote execution
   echo "---> Copying the project to ${REMOTE_HOST}"
-  rsync -avz --delete "$workdir/" "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_DIR}/$(basename "$workdir")/"
+  rsync -az --delete \
+    --info=progress2,stats2,flist0,name0,del0 \
+    "$workdir/" "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_DIR}/$(basename "$workdir")/"
 
   echo "---> Building and running on ${REMOTE_HOST}"
-  ssh "${REMOTE_USER}@${REMOTE_HOST}" "export PATH=/usr/local/cuda/bin:\$PATH && export LD_LIBRARY_PATH=/usr/local/cuda/lib64:\$LD_LIBRARY_PATH && cd ${REMOTE_DIR}/$(basename "$workdir") && rm -rf build && make -j4 VERBOSE=1 $CMAKE_ARGS"
+  ssh "${REMOTE_USER}@${REMOTE_HOST}" "export PATH=/usr/local/cuda/bin:\$PATH && export LD_LIBRARY_PATH=/usr/local/cuda/lib64:\$LD_LIBRARY_PATH && cd ${REMOTE_DIR}/$(basename "$workdir") && rm -rf build && make -j4 $CMAKE_ARGS"
 else
   echo "---> Building and running locally ..."
   cd "$workdir"

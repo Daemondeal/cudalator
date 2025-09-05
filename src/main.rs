@@ -182,6 +182,8 @@ fn prepare_output_folder(args: &Args) -> Result<()> {
         template_folder.join("src").join("runtime"),
         src_dir.join("runtime"),
     )?;
+    let bit_lib_src = PathBuf::from_str("./data/bit_lib/src")?;
+    copy_dir_all(bit_lib_src, src_dir.join("runtime"))?;
     copy_dir_all(
         template_folder.join("src").join("libs"),
         src_dir.join("libs"),

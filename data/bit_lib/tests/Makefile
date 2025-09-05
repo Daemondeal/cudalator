@@ -1,5 +1,5 @@
 CXX = g++
-CXXFLAGS = -std=c++17 -Wall -O2 -I..
+CXXFLAGS = -std=c++17 -Wall -O2 -I../src/
 IVERILOG = iverilog
 IVERILOG_FLAGS = -g2012
 VVP = vvp
@@ -19,7 +19,7 @@ $(BUILD_DIR)/cpp_results.txt: $(BUILD_DIR)/runner
 	@echo "--- Running C++ Simulation ---"
 	@./$(BUILD_DIR)/runner > $(BUILD_DIR)/cpp_results.txt
 
-$(BUILD_DIR)/runner: $(BUILD_DIR)/test_runner.cpp ../runtime.hpp | $(BUILD_DIR)
+$(BUILD_DIR)/runner: $(BUILD_DIR)/test_runner.cpp ../src/Bit.hpp ../src/cuda_compat.hpp | $(BUILD_DIR)
 	@echo "--- Compiling C++ Test Runner ---"
 	@$(CXX) $(CXXFLAGS) -o $@ $<
 

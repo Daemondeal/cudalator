@@ -1,4 +1,5 @@
-#include "../runtime.hpp"
+#include "Bit.hpp"
+#include "cuda_compat.hpp"
 #include <iostream>
 #include <string>
 
