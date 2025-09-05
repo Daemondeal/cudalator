@@ -27,6 +27,7 @@ std::vector<Process<state_work__double_int_adder>> make_processes();
 using DiffType = diff_work__double_int_adder;
 using StateType = state_work__double_int_adder;
 
+void run_process(state_work__double_int_adder *state, size_t len, size_t process_idx);
+
 void state_vcd_dump_names(fmt::ostream &file);
 void state_vcd_dump_values(state_work__double_int_adder *state, int tid, fmt::ostream &file);
-

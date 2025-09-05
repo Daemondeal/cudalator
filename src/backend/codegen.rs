@@ -129,11 +129,26 @@ impl<'a> Codegen<'a> {
         }
     }
 
+    pub fn codegen_function_qualifier<W: Write>(
+        &self,
+        file: &mut CppEmitter<'a, W>
+    ) -> Result<()> {
+        match self.target {
+            CodegenTarget::CUDA => {
+                emit!(file, "__global__ ")?;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
     pub fn codegen<W: Write>(
         &self,
         source: &mut CppEmitter<'a, W>,
         header: &mut CppEmitter<'a, W>,
     ) -> Result<()> {
+        let top_module = self.ast.get_module(self.top_module_idx);
+
         // Header
         emit!(header, "#pragma once\n")?;
         emit!(header, "#include \"../runtime/Process.hpp\"\n")?;
@@ -156,6 +171,14 @@ impl<'a> Codegen<'a> {
         self.codegen_top_struct_header(header)?;
         header.emit_empty_line()?;
 
+        self.codegen_process_crossbar_header(header)?;
+        header.emit_empty_line()?;
+
+        // for process in &top_module.processes {
+        //     self.codegen_process_header(header, *process)?;
+        // }
+        // header.emit_empty_line()?;
+
         self.codegen_vcd_dump_header(header)?;
         header.emit_empty_line()?;
 
@@ -163,19 +186,21 @@ impl<'a> Codegen<'a> {
         emit!(source, "#include \"module.hpp\"\n")?;
         source.emit_empty_line()?;
 
-        emit!(header, "#include \"../runtime/Vcd.hpp\"\n")?;
+        emit!(source, "#include \"../runtime/Vcd.hpp\"\n")?;
         source.emit_empty_line()?;
 
         self.codegen_diff_source(source)?;
         source.emit_empty_line()?;
 
-        let top_module = self.ast.get_module(self.top_module_idx);
         for process in &top_module.processes {
             self.codegen_process_body(source, *process)?;
             source.emit_empty_line()?;
         }
 
         self.codegen_process_container_source(source)?;
+        source.emit_empty_line()?;
+
+        self.codegen_process_crossbar_source(source)?;
         source.emit_empty_line()?;
 
         self.codegen_vcd_dump_source(source)?;
@@ -209,13 +234,7 @@ impl<'a> Codegen<'a> {
 
         source.line_start()?;
 
-        match self.target {
-            CodegenTarget::CUDA => {
-                emit!(source, "__global__ ")?;
-            }
-            _ => {}
-        }
-
+        self.codegen_function_qualifier(source)?;
         emit!(
             source,
             "void state_calculate_diff(state_{}* start, state_{}* end, diff_{}* diffs)",
@@ -291,7 +310,7 @@ impl<'a> Codegen<'a> {
             source.line_start()?;
             emit!(source, "result.push_back(Process<state_{}>(", self.top_name)?;
             emit!(source, "\"{}\", ", process_name(*process))?;
-            emit!(source, "{}, ", process_name(*process))?;
+            emit!(source, "{}, ", process.get_idx())?;
 
             // Emit the list of the ids of all signals inside the sensitivity list
             // TODO: Support negedge and posedge
@@ -346,12 +365,7 @@ impl<'a> Codegen<'a> {
         header.emit_empty_line()?;
 
         header.line_start()?;
-        match self.target {
-            CodegenTarget::CUDA => {
-                emit!(header, "__global__ ")?;
-            }
-            _ => {}
-        }
+        self.codegen_function_qualifier(header)?;
         emit!(
             header,
             "void state_calculate_diff(state_{}* start, state_{}* end, diff_{}* diffs)",
@@ -381,6 +395,86 @@ impl<'a> Codegen<'a> {
         Ok(())
     }
 
+    fn codegen_process_crossbar_header<W: Write>(
+        &self,
+        header: &mut CppEmitter<'a, W>,
+    ) -> Result<()> {
+
+        header.line_start()?;
+        self.codegen_function_qualifier(header)?;
+        emit!(
+            header,
+            "void run_process(state_{} *state, size_t len, size_t process_idx)",
+            self.top_name,
+        )?;
+        header.line_end_semicolon()?;
+        Ok(())
+    }
+
+    fn codegen_process_crossbar_source<W: Write>(
+        &self,
+        source: &mut CppEmitter<'a, W>,
+    ) -> Result<()> {
+        let top_module = self.ast.get_module(self.top_module_idx);
+
+        source.line_start()?;
+        self.codegen_function_qualifier(source)?;
+        emit!(
+            source,
+            "void run_process(state_{} *state, size_t len, size_t process_idx)",
+            self.top_name,
+        )?;
+        source.line_end()?;
+
+        source.block_start()?;
+
+        source.line_start()?;
+        emit!(source, "switch (process_idx)")?;
+        source.line_end()?;
+
+        source.block_start()?;
+        for process in &top_module.processes {
+            source.line_start()?;
+            emit!(
+                source,
+                "case {}: {}(state, len); break",
+                process.get_idx(),
+                process_name(*process),
+            )?;
+            source.line_end_semicolon()?;
+        }
+
+        source.line_start()?;
+        emit!(
+            source,
+            "default: break" // TODO: Implement error handling in GPU code
+        )?;
+        source.line_end_semicolon()?;
+        source.block_end()?;
+
+        source.block_end()?;
+
+        Ok(())
+    }
+
+    fn codegen_process_header<W: Write>(
+        &self,
+        header: &mut CppEmitter<'a, W>,
+        process: ProcessIdx,
+    ) -> Result<()> {
+        header.line_start()?;
+        self.codegen_function_qualifier(header)?;
+        emit!(
+            header,
+            "void {} (state_{} *state, size_t len)",
+            process_name(process),
+            self.top_name,
+        )?;
+
+        header.line_end_semicolon()?;
+        Ok(())
+    }
+
     fn codegen_process_body<W: Write>(
         &self,
         file: &mut CppEmitter<'a, W>,
@@ -389,14 +483,7 @@ impl<'a> Codegen<'a> {
         let ast_process = self.ast.get_process(process);
 
         file.line_start()?;
-
-        match self.target {
-            CodegenTarget::CUDA => {
-                emit!(file, "__global__ ")?;
-            }
-            _ => {}
-        }
-
+        self.codegen_function_qualifier(file)?;
         emit!(
             file,
             "void {} (state_{} *state, size_t len)",

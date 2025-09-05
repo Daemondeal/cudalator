@@ -98,7 +98,7 @@ void Circuit::eval() {
 
         // Run the processes
         for (auto & proc : ready_queue) {
-            proc.function_pointer(&m_states[0], 1);
+            run_process(&m_states[0], 1, proc.id);
         }
 
         ready_queue.clear();
@@ -113,7 +113,7 @@ void Circuit::eval() {
 
 void Circuit::first_eval() {
     for (auto & proc : m_processes) {
-        proc.function_pointer(&m_states[0], 1);
+        run_process(&m_states[0], 1, proc.id);
     }
 
     eval();

@@ -8,20 +8,18 @@
 template <typename S>
 struct Process {
 public:
-    typedef void (*process_signature_t)(S* state, size_t len);
-
     Process() = delete;
     Process(
         std::string name,
-        process_signature_t fp,
+        size_t id,
         std::vector<std::tuple<uint32_t, ChangeType>> sens
     )
         : name(name)
-        , function_pointer(fp)
+        , id(id)
         , sensitivity(sens) {
     }
 
     std::string name;
-    process_signature_t function_pointer;
+    size_t id;
     std::vector<std::tuple<uint32_t, ChangeType>> sensitivity;
 };
