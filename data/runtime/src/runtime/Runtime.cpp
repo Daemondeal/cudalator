@@ -60,7 +60,7 @@ void Circuit::eval() {
 
     while (1) {
         // Check which processess need to be run
-        state_calculate_diff(&m_previous_states[0], &m_states[0], &diff);
+        state_calculate_diff(&m_previous_states[0], &m_states[0], &diff, 1);
 
         for (auto& proc : m_processes) {
             bool should_run = false;

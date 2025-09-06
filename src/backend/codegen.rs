@@ -187,6 +187,7 @@ impl<'a> Codegen<'a> {
         source.emit_empty_line()?;
 
         emit!(source, "#include \"../runtime/Vcd.hpp\"\n")?;
+        emit!(source, "#include \"../runtime/ChangeType.hpp\"\n")?;
         source.emit_empty_line()?;
 
         self.codegen_diff_source(source)?;
@@ -237,7 +238,7 @@ impl<'a> Codegen<'a> {
         self.codegen_function_qualifier(source)?;
         emit!(
             source,
-            "void state_calculate_diff(state_{}* start, state_{}* end, diff_{}* diffs)",
+            "void state_calculate_diff(state_{}* start, state_{}* end, diff_{}* diffs, size_t len)",
             self.top_name,
             self.top_name,
             self.top_name,
@@ -368,7 +369,7 @@ impl<'a> Codegen<'a> {
         self.codegen_function_qualifier(header)?;
         emit!(
             header,
-            "void state_calculate_diff(state_{}* start, state_{}* end, diff_{}* diffs)",
+            "void state_calculate_diff(state_{}* start, state_{}* end, diff_{}* diffs, size_t len)",
             self.top_name,
             self.top_name,
             self.top_name,

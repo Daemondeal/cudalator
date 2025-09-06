@@ -20,7 +20,7 @@ struct diff_work__double_int_adder
   ChangeType change[5];
 };
 
-void state_calculate_diff(state_work__double_int_adder* start, state_work__double_int_adder* end, diff_work__double_int_adder* diffs);
+void state_calculate_diff(state_work__double_int_adder* start, state_work__double_int_adder* end, diff_work__double_int_adder* diffs, size_t len);
 
 std::vector<Process<state_work__double_int_adder>> make_processes();
 
