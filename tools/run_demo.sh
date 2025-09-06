@@ -49,11 +49,21 @@ echo "---> Substituting the demo main.cpp ..."
 rm -f "$workdir/src/main.cpp"
 cp -f "$sim_main" "$workdir/src/main.cpp"
 
+echo "---> Substituting the demo main file ..."
+if [ "$CPU" = true ]; then
+  rm -f "$workdir/src/main.cpp"
+  cp -f "$sim_main" "$workdir/src/main.cpp"
+else
+  rm -f "$workdir/src/main.cpp"
+  sim_main_cu="${sim_main%.cpp}.cu"
+  cp -f "$sim_main_cu" "$workdir/src/main.cu"
+fi
+
 
 # Set CMake arguments for CUDA only if not a CPU build
 CMAKE_ARGS=""
 if [ "$CPU" = false ]; then
-  CMAKE_ARGS="CMAKE_ARGS='-DENABLE_CUDA=ON'"
+  CMAKE_ARGS="CMAKE_ARGS=-DENABLE_CUDA=ON"
 fi
 
 if [ "$REMOTE" = true ]; then

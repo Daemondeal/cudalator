@@ -1,6 +1,5 @@
 #pragma once
 
-// #include <array>
 #include "cuda_compat.hpp"
 #include <cstdint>
 #include <fmt/format.h>
@@ -1044,7 +1043,7 @@ public:
         *this |= shifted_value;
     }
 
-#ifndef __CUDACC__
+    // #ifndef __CUDACC__
     /**
      * @brief Converts the Bit vector to a hexadecimal string.
      * Mimics the behavior of Verilog's '$display("%h", ...)' for comparison
@@ -1129,7 +1128,7 @@ public:
 
         return out;
     }
-#endif
+    // #endif
 
 private:
     /**
@@ -1252,7 +1251,7 @@ private:
 
     // The mask computation is static since the mask is shared by all
     // the objects with the same Bit<N> width
-    static constexpr MaskArray compute_mask() {
+    HOST_DEVICE static constexpr MaskArray compute_mask() {
         // result accumulator
         MaskArray mask_struct{};
         // chunk by chunk
@@ -1272,7 +1271,7 @@ private:
         return mask_struct;
     }
     // permanent owner for the whole program lifetime
-    static constexpr MaskArray mask_holder = compute_mask();
+    HOST_DEVICE static constexpr MaskArray mask_holder = compute_mask();
     // pointer, così non scrivo mask_holder ma solo mask[]
     static constexpr uint32_t const* mask = mask_holder.data;
 
