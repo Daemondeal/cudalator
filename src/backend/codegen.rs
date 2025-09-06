@@ -129,13 +129,26 @@ impl<'a> Codegen<'a> {
         }
     }
 
-    pub fn codegen_function_qualifier<W: Write>(
+    pub fn codegen_cuda_global<W: Write>(
         &self,
         file: &mut CppEmitter<'a, W>
     ) -> Result<()> {
         match self.target {
             CodegenTarget::CUDA => {
                 emit!(file, "__global__ ")?;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    pub fn codegen_cuda_device<W: Write>(
+        &self,
+        file: &mut CppEmitter<'a, W>
+    ) -> Result<()> {
+        match self.target {
+            CodegenTarget::CUDA => {
+                emit!(file, "__device__ ")?;
             }
             _ => {}
         }
@@ -235,7 +248,7 @@ impl<'a> Codegen<'a> {
 
         source.line_start()?;
 
-        self.codegen_function_qualifier(source)?;
+        self.codegen_cuda_global(source)?;
         emit!(
             source,
             "void state_calculate_diff(state_{}* start, state_{}* end, diff_{}* diffs, size_t len)",
@@ -366,7 +379,7 @@ impl<'a> Codegen<'a> {
         header.emit_empty_line()?;
 
         header.line_start()?;
-        self.codegen_function_qualifier(header)?;
+        self.codegen_cuda_global(header)?;
         emit!(
             header,
             "void state_calculate_diff(state_{}* start, state_{}* end, diff_{}* diffs, size_t len)",
@@ -402,7 +415,7 @@ impl<'a> Codegen<'a> {
     ) -> Result<()> {
 
         header.line_start()?;
-        self.codegen_function_qualifier(header)?;
+        self.codegen_cuda_global(header)?;
         emit!(
             header,
             "void run_process(state_{} *state, size_t len, size_t process_idx)",
@@ -419,7 +432,7 @@ impl<'a> Codegen<'a> {
         let top_module = self.ast.get_module(self.top_module_idx);
 
         source.line_start()?;
-        self.codegen_function_qualifier(source)?;
+        self.codegen_cuda_global(source)?;
         emit!(
             source,
             "void run_process(state_{} *state, size_t len, size_t process_idx)",
@@ -458,13 +471,14 @@ impl<'a> Codegen<'a> {
         Ok(())
     }
 
+    #[allow(dead_code)]
     fn codegen_process_header<W: Write>(
         &self,
         header: &mut CppEmitter<'a, W>,
         process: ProcessIdx,
     ) -> Result<()> {
         header.line_start()?;
-        self.codegen_function_qualifier(header)?;
+        self.codegen_cuda_device(header)?;
         emit!(
             header,
             "void {} (state_{} *state, size_t len)",
@@ -484,7 +498,7 @@ impl<'a> Codegen<'a> {
         let ast_process = self.ast.get_process(process);
 
         file.line_start()?;
-        self.codegen_function_qualifier(file)?;
+        self.codegen_cuda_device(file)?;
         emit!(
             file,
             "void {} (state_{} *state, size_t len)",
