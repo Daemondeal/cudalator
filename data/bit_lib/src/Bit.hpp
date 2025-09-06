@@ -3,13 +3,10 @@
 #include "cuda_compat.hpp"
 #include <cstdint>
 #include <fmt/format.h>
-#include <type_traits>
-#ifndef __CUDACC__
-#include <fmt/format.h>
 #include <iomanip>
 #include <sstream>
 #include <string>
-#endif
+#include <type_traits>
 
 /**
  * (operators), (name), (implemented)
@@ -1049,7 +1046,7 @@ public:
      * Mimics the behavior of Verilog's '$display("%h", ...)' for comparison
      * @return A std::string containing the hexadecimal representation
      */
-    std::string to_string() const {
+    HOST std::string to_string() const {
         std::stringstream ss;
         ss << std::hex; // stream output in hexadecimal format
 
@@ -1059,7 +1056,8 @@ public:
         // apply the mask for the most significant chunk to ensure we only
         // consider the valid bits for this Bit<N> object
         uint32_t msb_val =
-            chunks[msb_chunk_idx] & mask_holder.data[msb_chunk_idx];
+            // chunks[msb_chunk_idx] & mask_holder.data[msb_chunk_idx];
+            chunks[msb_chunk_idx] & mask_at(msb_chunk_idx);
 
         // compute how many bits are in the last chunk
         int bits_in_msb = (N % 32 == 0) ? 32 : (N % 32);
@@ -1086,7 +1084,7 @@ public:
         return ss.str();
     }
 
-    std::string to_binary_string() {
+    HOST std::string to_binary_string() {
         if (N == 0)
             return "0";
 
@@ -1096,8 +1094,8 @@ public:
         int bits_in_msb = (N % 32 == 0) ? 32 : (N % 32);
 
         // Mask the most significant chunk
-        uint32_t msb_val = chunks[msb_idx] & mask[msb_idx];
-
+        // uint32_t msb_val = chunks[msb_idx] & mask[msb_idx];
+        uint32_t msb_val = chunks[msb_idx] & mask_at(msb_idx);
         // Print MSB chunk
         for (int i = bits_in_msb - 1; i >= 0; --i) {
             ss << ((msb_val >> i) & 1);
@@ -1114,7 +1112,7 @@ public:
     }
 
     template <typename FormatContext>
-    static auto format(const Bit<N>& n, FormatContext& ctx) {
+    HOST static auto format(const Bit<N>& n, FormatContext& ctx) {
         if (n.num_chunks == 0) {
             return fmt::format_to(ctx.out(), "{}'h0", N);
         }
@@ -1139,7 +1137,8 @@ private:
     // preserve the class invariant
     HOST_DEVICE void apply_mask() {
         for (int i = 0; i < num_chunks; ++i)
-            chunks[i] &= mask_holder.data[i];
+            // chunks[i] &= mask_holder.data[i]
+            chunks[i] &= mask_at(i);
     }
 
 // Helper for the initializer_list constructor
@@ -1271,9 +1270,14 @@ private:
         return mask_struct;
     }
     // permanent owner for the whole program lifetime
-    HOST_DEVICE static constexpr MaskArray mask_holder = compute_mask();
+    // inline static constexpr MaskArray mask_holder = compute_mask();
     // pointer, così non scrivo mask_holder ma solo mask[]
-    static constexpr uint32_t const* mask = mask_holder.data;
+    // static constexpr uint32_t const* mask = mask_holder.data;
+
+    HOST_DEVICE static constexpr uint32_t mask_at(int i) {
+        return (i == num_chunks - 1 && (N % 32) != 0) ? ((1u << (N % 32)) - 1u)
+                                                      : 0xFFFFFFFFu;
+    }
 
     // ============ Data storage ============
     uint32_t chunks[num_chunks];
