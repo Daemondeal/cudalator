@@ -1,10 +1,9 @@
-#include "fmt/core.h"
+#include "fmt/format.h"
 
 #include "codegen/module.hpp"
 #include "runtime/Runtime.hpp"
 
-
-static void apply_input(StateType *dut, int circuit_idx, int cycle) {
+static void apply_input(StateType* dut, int circuit_idx, int cycle) {
     // Apply inputs to your DUT
 }
 

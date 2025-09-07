@@ -19,5 +19,5 @@ add_executable(
     src/libs/format.cc
     src/libs/os.cc
 )
-
+target_include_directories(run_simulation PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src/libs")
 target_link_libraries(run_simulation)

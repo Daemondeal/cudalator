@@ -1,13 +1,12 @@
 #pragma once
 
-#include <array>
+#include "cuda_compat.hpp"
 #include <cstdint>
-#include <initializer_list>
+#include <fmt/format.h>
 #include <iomanip>
 #include <sstream>
 #include <string>
 #include <type_traits>
-#include <fmt/core.h>
 
 /**
  * (operators), (name), (implemented)
@@ -41,9 +40,6 @@
  * (<<{} >>{}), (Stream operators), (i would like not to implement also these)
  */
 
-/**
- * Lo shift ha bisogno di essere castato
- */
 template <int N>
 class Bit {
     static_assert(N > 0 && N <= 128, "The maximum supported bit width is 128");
@@ -59,16 +55,21 @@ public:
      * @brief Default constructor.
      * Creates a Bit vector zero-initialized
      */
-    Bit() = default;
+    HOST_DEVICE Bit() {
+        for (int i = 0; i < num_chunks; ++i) {
+            chunks[i] = 0;
+        }
+    }
 
     /**
      * @brief Constructor from a single integral value.
      */
     template <typename T, typename = std::enable_if_t<std::is_integral_v<T>>>
-    explicit Bit(T value) {
+    HOST_DEVICE explicit Bit(T value) {
         set_value(value);
     }
 
+#ifndef __CUDACC__
     /**
      * @brief Constructor from a list of 32-bit chunks
      * For chunks > 64 bits. Chunks from least significant to most
@@ -82,14 +83,14 @@ public:
      * @brief Constructor from a hexadecimal string literal
      */
     explicit Bit(const char* hex_string) { parse_hex_string(hex_string); }
-
+#endif
     /**
      * @brief Converting constructor from another Bit vector
      * This allows initialization from a Bit vectorof a different width, like
      * Bit<8> result = Bit<9>(...)
      */
     template <int M>
-    Bit(const Bit<M>& rhs) {
+    HOST_DEVICE Bit(const Bit<M>& rhs) {
         *this = rhs;
     }
 
@@ -100,9 +101,11 @@ public:
      * smaller.
      */
     template <int M>
-    Bit& operator=(const Bit<M>& rhs) {
+    HOST_DEVICE Bit& operator=(const Bit<M>& rhs) {
         // Clear old data since we don't need it anymore
-        chunks.fill(0);
+        for (int i = 0; i < num_chunks; ++i) {
+            chunks[i] = 0;
+        }
 
         // computing the smaller of the two chunk counts
         constexpr int rhs_chunks = (M + 31) / 32;
@@ -122,7 +125,7 @@ public:
      * @brief Assignment from a single integral value
      */
     template <typename T, typename = std::enable_if_t<std::is_integral_v<T>>>
-    Bit& operator=(T value) {
+    HOST_DEVICE Bit& operator=(T value) {
         set_value(value);
         return *this;
     }
@@ -131,7 +134,7 @@ public:
      * @brief Equality comparison operator
      */
     template <int M>
-    Bit<1> operator==(const Bit<M>& rhs) const {
+    HOST_DEVICE Bit<1> operator==(const Bit<M>& rhs) const {
         constexpr int lhs_chunks = num_chunks;
         constexpr int rhs_chunks = (M + 31) / 32;
         constexpr int max_chunks =
@@ -151,14 +154,14 @@ public:
      * @brief Inequality comparison operator
      */
     template <int M>
-    Bit<1> operator!=(const Bit<M>& rhs) const {
+    HOST_DEVICE Bit<1> operator!=(const Bit<M>& rhs) const {
         return !(*this == rhs);
     }
 
     /**
      * @brief Prefix increment (++a)
      */
-    Bit<N>& operator++() {
+    HOST_DEVICE Bit<N>& operator++() {
         *this += Bit<1>(1);
         return *this; // return the new incremented value
     }
@@ -167,7 +170,7 @@ public:
      * @brief postfix increment (a++)
      * I'm using int as a dummy parameter to distinguish the signature
      */
-    Bit<N> operator++(int) {
+    HOST_DEVICE Bit<N> operator++(int) {
         Bit<N> temp = *this;
         *this += Bit<1>(1);
         return temp;
@@ -176,7 +179,7 @@ public:
     /**
      * @brief prefix decrement (--a)
      */
-    Bit<N>& operator--() {
+    HOST_DEVICE Bit<N>& operator--() {
         *this -= Bit<1>(1);
         return *this;
     }
@@ -184,7 +187,7 @@ public:
     /**
      * @brief postfix decrement (a--)
      */
-    Bit<N> operator--(int) {
+    HOST_DEVICE Bit<N> operator--(int) {
         Bit<N> temp = *this;
         *this -= Bit<1>(1);
         return temp;
@@ -197,8 +200,8 @@ public:
      * @return Bit<1>(1) if the value is in the set, Bit<1>(0) otherwise
      */
     template <int N_Check, typename... T_Set>
-    static Bit<1> inside(const Bit<N_Check>& value_to_check,
-                         const T_Set&... values_in_set) {
+    HOST_DEVICE static Bit<1> inside(const Bit<N_Check>& value_to_check,
+                                     const T_Set&... values_in_set) {
         bool is_inside = false;
         // è una fold expression, in teoria solo c++17, potenzialmente da
         // cambiare
@@ -212,7 +215,7 @@ public:
      * Verilog equivalent: {arg1, arg2, ...}
      */
     template <typename... Args>
-    static auto concat(const Args&... args) {
+    HOST_DEVICE static auto concat(const Args&... args) {
         constexpr int FINAL_WIDTH = (0 + ... + std::decay_t<Args>::width);
         static_assert(FINAL_WIDTH <= 128,
                       "Concatenation result exceeds 128 bits");
@@ -237,7 +240,7 @@ public:
      * Verilog equivalent: {N{val}}
      */
     template <int REPLICATION_COUNT, int M>
-    static auto replicate(const Bit<M>& val) {
+    HOST_DEVICE static auto replicate(const Bit<M>& val) {
         constexpr int FINAL_WIDTH = REPLICATION_COUNT * M;
         static_assert(FINAL_WIDTH > 0,
                       "Replication must result in a positive width.");
@@ -260,7 +263,7 @@ public:
      * discarded.
      */
     template <int M>
-    auto operator+(const Bit<M>& rhs) const
+    HOST_DEVICE auto operator+(const Bit<M>& rhs) const
         -> Bit<max(N, M) < 128 ? max(N, M) + 1 : 128> {
         // computing the result width
         constexpr int RESULT_BITS = (max(N, M) < 128) ? (max(N, M) + 1) : 128;
@@ -289,7 +292,7 @@ public:
      * The result width is the same as the wider of the two operands.
      */
     template <int M>
-    auto operator-(const Bit<M>& rhs) const -> Bit<max(N, M)> {
+    HOST_DEVICE auto operator-(const Bit<M>& rhs) const -> Bit<max(N, M)> {
         constexpr int RESULT_BITS = max(N, M);
         Bit<RESULT_BITS> result;
 
@@ -318,7 +321,7 @@ public:
      * the class assertion. Any overflow beyond 128 bits is discarded.
      */
     template <int M>
-    auto operator*(const Bit<M>& rhs) const
+    HOST_DEVICE auto operator*(const Bit<M>& rhs) const
         -> Bit<(N + M > 128) ? 128 : (N + M)> {
         constexpr int IDEAL_BITS = N + M;
         constexpr int RESULT_BITS = (IDEAL_BITS > 128) ? 128 : IDEAL_BITS;
@@ -358,7 +361,7 @@ public:
      * @brief Less-than comparison operator
      */
     template <int M>
-    Bit<1> operator<(const Bit<M>& rhs) const {
+    HOST_DEVICE Bit<1> operator<(const Bit<M>& rhs) const {
         constexpr int lhs_chunks = num_chunks;
         constexpr int rhs_chunks = (M + 31) / 32;
         constexpr int max_chunks =
@@ -385,7 +388,7 @@ public:
      * @brief Greater-than comparison operator
      */
     template <int M>
-    Bit<1> operator>(const Bit<M>& rhs) const {
+    HOST_DEVICE Bit<1> operator>(const Bit<M>& rhs) const {
         return rhs < *this;
     }
 
@@ -393,7 +396,7 @@ public:
      * @brief Less-than-or-equal-to comparison operator
      */
     template <int M>
-    Bit<1> operator<=(const Bit<M>& rhs) const {
+    HOST_DEVICE Bit<1> operator<=(const Bit<M>& rhs) const {
         return !(*this > rhs);
     }
 
@@ -401,14 +404,14 @@ public:
      * @brief greater-than-or-equal-to comparison operator
      */
     template <int M>
-    Bit<1> operator>=(const Bit<M>& rhs) const {
+    HOST_DEVICE Bit<1> operator>=(const Bit<M>& rhs) const {
         return !(*this < rhs);
     }
 
     /**
      * @brief logical left shift operator, filling with zeros
      */
-    Bit<N> operator<<(int shift) const {
+    HOST_DEVICE Bit<N> operator<<(int shift) const {
         Bit<N> result;
 
         if (shift <= 0) {
@@ -443,7 +446,7 @@ public:
      * of a variable amount)
      */
     template <int M>
-    Bit<N> operator<<(const Bit<M>& shift_amount) const {
+    HOST_DEVICE Bit<N> operator<<(const Bit<M>& shift_amount) const {
         uint64_t shift_val = static_cast<uint64_t>(shift_amount);
         return *this << shift_val;
     }
@@ -451,7 +454,7 @@ public:
     /**
      * @brief Logical right shift operator, filling with zeros
      */
-    Bit<N> operator>>(int shift) const {
+    HOST_DEVICE Bit<N> operator>>(int shift) const {
         Bit<N> result; // zero-initialized by default
 
         if (shift <= 0) {
@@ -482,7 +485,7 @@ public:
     }
 
     template <int M>
-    Bit<N> operator>>(const Bit<M>& shift_amount) const {
+    HOST_DEVICE Bit<N> operator>>(const Bit<M>& shift_amount) const {
         uint64_t shift_val = static_cast<uint64_t>(shift_amount);
         return *this >> shift_val;
     }
@@ -491,7 +494,7 @@ public:
      * @brief Logical NOT operator
      * Returns Bit<1>(1) if the entire vector is zero, Bit<1>(0) otherwise
      */
-    Bit<1> operator!() const {
+    HOST_DEVICE Bit<1> operator!() const {
         // Checking if any bit in any chunk is non-zero
         for (int i = 0; i < num_chunks; ++i) {
             if (chunks[i] != 0) {
@@ -506,7 +509,7 @@ public:
      * @brief Bitwise AND operator
      */
     template <int M>
-    auto operator&(const Bit<M>& rhs) const -> Bit<max(N, M)> {
+    HOST_DEVICE auto operator&(const Bit<M>& rhs) const -> Bit<max(N, M)> {
         constexpr int RESULT_BITS = max(N, M);
         Bit<RESULT_BITS> result;
 
@@ -529,7 +532,7 @@ public:
      * @brief Bitwise OR operator
      */
     template <int M>
-    auto operator|(const Bit<M>& rhs) const -> Bit<max(N, M)> {
+    HOST_DEVICE auto operator|(const Bit<M>& rhs) const -> Bit<max(N, M)> {
         constexpr int RESULT_BITS = max(N, M);
         Bit<RESULT_BITS> result;
 
@@ -552,7 +555,7 @@ public:
      * @brief Bitwise XOR operator
      */
     template <int M>
-    auto operator^(const Bit<M>& rhs) const -> Bit<max(N, M)> {
+    HOST_DEVICE auto operator^(const Bit<M>& rhs) const -> Bit<max(N, M)> {
         constexpr int RESULT_BITS = max(N, M);
         Bit<RESULT_BITS> result;
 
@@ -576,7 +579,7 @@ public:
      * Treats the entire vector as a single boolean value (true if non-zero)
      */
     template <int M>
-    Bit<1> operator&&(const Bit<M>& rhs) const {
+    HOST_DEVICE Bit<1> operator&&(const Bit<M>& rhs) const {
         // i'm using the explicit bool conversion to determine if each vector
         // isnon-zero.
         bool lhs_is_true = static_cast<bool>(*this);
@@ -590,7 +593,7 @@ public:
      * Treats the entire vector as a single boolean value (true if non-zero)
      */
     template <int M>
-    Bit<1> operator||(const Bit<M>& rhs) const {
+    HOST_DEVICE Bit<1> operator||(const Bit<M>& rhs) const {
         bool lhs_is_true = static_cast<bool>(*this);
         bool rhs_is_true = static_cast<bool>(rhs);
 
@@ -604,7 +607,7 @@ public:
      * @return Bit<1>(1) for true, Bit<1>(0) for false.
      */
     template <int M>
-    Bit<1> logical_implication(const Bit<M>& rhs) const {
+    HOST_DEVICE Bit<1> logical_implication(const Bit<M>& rhs) const {
         return !(*this) || rhs;
     }
 
@@ -614,7 +617,7 @@ public:
      * @return Bit<1>(1) for true, Bit<1>(0) for false.
      */
     template <int M>
-    Bit<1> logical_equivalence(const Bit<M>& rhs) const {
+    HOST_DEVICE Bit<1> logical_equivalence(const Bit<M>& rhs) const {
         // implementing (A -> B) && (B -> A)
         return this->logical_implication(rhs) && rhs.logical_implication(*this);
     }
@@ -623,9 +626,9 @@ public:
      * @brief Mimics Verilog conditional -ternary operator.
      */
     template <int Cond_N, int W1, int W2>
-    static Bit<max(W1, W2)> conditional(const Bit<Cond_N>& cond,
-                                        const Bit<W1>& true_val,
-                                        const Bit<W2>& false_val) {
+    HOST_DEVICE static Bit<max(W1, W2)> conditional(const Bit<Cond_N>& cond,
+                                                    const Bit<W1>& true_val,
+                                                    const Bit<W2>& false_val) {
         if (static_cast<bool>(cond)) {
             return true_val;
         } else {
@@ -636,14 +639,14 @@ public:
     /**
      * @brief unary plus (+a)
      */
-    Bit<N> operator+() const {
+    HOST_DEVICE Bit<N> operator+() const {
         return *this; // returns a copy of the object unchanged
     }
 
     /**
      * @brief unary minus (-a)
      */
-    Bit<N> operator-() const {
+    HOST_DEVICE Bit<N> operator-() const {
         // 2s complement is (~a + 1)
         return ~(*this) + Bit<1>(1);
     }
@@ -651,7 +654,7 @@ public:
     /**
      * @brief Unary bitwise NOT operator
      */
-    Bit<N> operator~() const {
+    HOST_DEVICE Bit<N> operator~() const {
         Bit<N> result;
         for (int i = 0; i < num_chunks; ++i) {
             result.chunks[i] = ~chunks[i];
@@ -664,7 +667,7 @@ public:
      * @brief Bitwise XNOR operator function
      */
     template <int M>
-    auto xnor(const Bit<M>& rhs) const -> Bit<max(N, M)> {
+    HOST_DEVICE auto xnor(const Bit<M>& rhs) const -> Bit<max(N, M)> {
         return ~(*this ^ rhs);
     }
 
@@ -672,10 +675,12 @@ public:
      * @brief Performs a reduction AND on the vector
      * @return Bit<1>(1) if all bits are 1, Bit<1>(0) otherwise
      */
-    Bit<1> reduce_and() const {
+    HOST_DEVICE Bit<1> reduce_and() const {
         // creating a temporary vector with all 1s
         Bit<N> all_ones;
-        all_ones.chunks.fill(0xFFFFFFFF);
+        for (int i = 0; i < num_chunks; ++i) {
+            all_ones.chunks[i] = 0xFFFFFFFF;
+        }
         all_ones.apply_mask(); // mask it to the correct width N
 
         // The reduction AND is 1 sse the number is equal to all ones.
@@ -686,7 +691,7 @@ public:
      * @brief Performs a reduction OR on the vector
      * @return Bit<1>(1) if any bit is 1, Bit<1>(0) otherwise
      */
-    Bit<1> reduce_or() const {
+    HOST_DEVICE Bit<1> reduce_or() const {
         // The reduction OR is 1 if the number is non-zero
         return Bit<1>(static_cast<bool>(*this));
     }
@@ -696,17 +701,21 @@ public:
      * @return Bit<1>(1) if there is an odd number of set bits, Bit<1>(0)
      * otherwise
      */
-    Bit<1> reduce_xor() const {
+    HOST_DEVICE Bit<1> reduce_xor() const {
         int total_set_bits = 0;
+#ifdef __CUDACC__
+        for (int i = 0; i < num_chunks; ++i) {
+            total_set_bits += __popc(chunks[i]);
+        }
+#else
         for (int i = 0; i < num_chunks; ++i) {
             uint32_t chunk = chunks[i];
-            // there is the __popcount intrisic for clang
-            // TODO: search for the gpu equivalent
             while (chunk > 0) {
                 chunk &= (chunk - 1);
                 total_set_bits++;
             }
         }
+#endif
         // result is 1 if the total number of set bits is odd
         return Bit<1>(total_set_bits % 2);
     }
@@ -714,23 +723,23 @@ public:
     /**
      * @brief Performs a reduction NAND on the vector
      */
-    Bit<1> reduce_nand() const { return !this->reduce_and(); }
+    HOST_DEVICE Bit<1> reduce_nand() const { return !this->reduce_and(); }
 
     /**
      * @brief Performs a reduction NOR on the vector
      */
-    Bit<1> reduce_nor() const { return !this->reduce_or(); }
+    HOST_DEVICE Bit<1> reduce_nor() const { return !this->reduce_or(); }
 
     /**
      * @brief Performs a reduction XNOR on the vector
      */
-    Bit<1> reduce_xnor() const { return !this->reduce_xor(); }
+    HOST_DEVICE Bit<1> reduce_xnor() const { return !this->reduce_xor(); }
 
     /**
      * @brief Addition assignment operator
      */
     template <int M>
-    Bit<N>& operator+=(const Bit<M>& rhs) {
+    HOST_DEVICE Bit<N>& operator+=(const Bit<M>& rhs) {
         *this = *this + rhs;
         return *this;
     }
@@ -739,7 +748,7 @@ public:
      * @brief Subtraction assignment operator
      */
     template <int M>
-    Bit<N>& operator-=(const Bit<M>& rhs) {
+    HOST_DEVICE Bit<N>& operator-=(const Bit<M>& rhs) {
         *this = *this - rhs;
         return *this;
     }
@@ -748,7 +757,7 @@ public:
      * @brief Multiplication assignment operator
      */
     template <int M>
-    Bit<N>& operator*=(const Bit<M>& rhs) {
+    HOST_DEVICE Bit<N>& operator*=(const Bit<M>& rhs) {
         *this = *this * rhs;
         return *this;
     }
@@ -757,7 +766,7 @@ public:
      * @brief Division assignment operator
      */
     template <int M>
-    Bit<N>& operator/=(const Bit<M>& rhs) {
+    HOST_DEVICE Bit<N>& operator/=(const Bit<M>& rhs) {
         *this = *this / rhs;
         return *this;
     }
@@ -766,7 +775,7 @@ public:
      * @brief Modulo assignment operator
      */
     template <int M>
-    Bit<N>& operator%=(const Bit<M>& rhs) {
+    HOST_DEVICE Bit<N>& operator%=(const Bit<M>& rhs) {
         *this = *this % rhs;
         return *this;
     }
@@ -775,7 +784,7 @@ public:
      * @brief Bitwise AND assignment operator
      */
     template <int M>
-    Bit<N>& operator&=(const Bit<M>& rhs) {
+    HOST_DEVICE Bit<N>& operator&=(const Bit<M>& rhs) {
         *this = *this & rhs;
         return *this;
     }
@@ -784,7 +793,7 @@ public:
      * @brief Bitwise OR assignment operator
      */
     template <int M>
-    Bit<N>& operator|=(const Bit<M>& rhs) {
+    HOST_DEVICE Bit<N>& operator|=(const Bit<M>& rhs) {
         *this = *this | rhs;
         return *this;
     }
@@ -793,7 +802,7 @@ public:
      * @brief Bitwise XOR assignment operator
      */
     template <int M>
-    Bit<N>& operator^=(const Bit<M>& rhs) {
+    HOST_DEVICE Bit<N>& operator^=(const Bit<M>& rhs) {
         *this = *this ^ rhs;
         return *this;
     }
@@ -802,7 +811,7 @@ public:
      * @brief Logical right shift assignment operator
      */
     template <int M>
-    Bit<N>& operator>>=(const Bit<M>& rhs) {
+    HOST_DEVICE Bit<N>& operator>>=(const Bit<M>& rhs) {
         *this = *this >> rhs;
         return *this;
     }
@@ -811,12 +820,12 @@ public:
      * @brief Logical left shift assignment operator
      */
     template <int M>
-    Bit<N>& operator<<=(const Bit<M>& rhs) {
+    HOST_DEVICE Bit<N>& operator<<=(const Bit<M>& rhs) {
         *this = *this << rhs;
         return *this;
     }
 
-    explicit operator uint64_t() const {
+    HOST_DEVICE explicit operator uint64_t() const {
         // static_assert(N <= 64, "Bit<N> is too wide to be cast to uint64_t
         // without data loss.");
         uint64_t value = 0;
@@ -835,7 +844,7 @@ public:
      * @brief Explicit conversion to bool
      * returns true if the vector is non-zero, false otherwise
      */
-    explicit operator bool() const {
+    HOST_DEVICE explicit operator bool() const {
         for (int i = 0; i < num_chunks; ++i) {
             if (chunks[i] != 0) {
                 return true;
@@ -849,7 +858,7 @@ public:
      * The result width is the same as the WIDER of the two operands
      */
     template <int M>
-    auto operator/(const Bit<M>& divisor) const -> Bit<max(N, M)> {
+    HOST_DEVICE auto operator/(const Bit<M>& divisor) const -> Bit<max(N, M)> {
         constexpr int RESULT_BITS = max(N, M);
         // Division by zero is undefined. In Verilog, it results in all 'X's.
         // Since we don't have an 'X' state, i'm choosing to return all ones but
@@ -857,7 +866,9 @@ public:
         // TODO: confrontati
         if (divisor == Bit<M>(0)) {
             Bit<RESULT_BITS> all_ones;
-            all_ones.chunks.fill(0xFFFFFFFF);
+            for (int i = 0; i < all_ones.num_chunks; ++i) {
+                all_ones.chunks[i] = 0xFFFFFFFF;
+            }
             all_ones.apply_mask();
             return all_ones;
         }
@@ -894,10 +905,13 @@ public:
      * The result width is the same as the DIVISOR (rhs)
      */
     template <int M>
-    auto operator%(const Bit<M>& divisor) const -> Bit<N> { // Return Bit<N>
+    HOST_DEVICE auto operator%(const Bit<M>& divisor) const
+        -> Bit<N> { // Return Bit<N>
         if (divisor == Bit<M>(0)) {
             Bit<N> all_ones; // Create a Bit<N>
-            all_ones.chunks.fill(0xFFFFFFFF);
+            for (int i = 0; i < all_ones.num_chunks; ++i) {
+                all_ones.chunks[i] = 0xFFFFFFFF;
+            }
             all_ones.apply_mask();
             return all_ones;
         }
@@ -921,35 +935,141 @@ public:
     }
 
     /**
+     * @brief Performs bit selection
+     * @param index  the bit position to access (0 is the LSB)
+     */
+    HOST_DEVICE Bit<1> select_bit(int index) const {
+        // if (index < 0 || index >= N) { throw std::out_of_range("Index out of
+        // bounds"); }
+
+        int chunk_index = index / 32;
+        int bit_in_chunk = index % 32;
+
+        // we can right shift & maks
+        uint32_t bit_value = (chunks[chunk_index] >> bit_in_chunk) & 1;
+
+        return Bit<1>(bit_value);
+    }
+
+    /**
+     * @brief part selection
+     * @tparam MSB most significant bit of the slice (inclusive)
+     * @tparam LSB least significant bit of the slice (inclusive)
+     */
+    template <int MSB, int LSB>
+    HOST_DEVICE auto select_part() const -> Bit<MSB - LSB + 1> {
+        static_assert(MSB >= LSB, "MSB must be greater than or equal to LSB");
+        static_assert(MSB < N, "MSB is out of bounds for this Bit vector");
+
+        constexpr int SLICE_WIDTH = MSB - LSB + 1;
+
+        // right-shift so to move the lsb of the slice to position 0
+        auto shifted_val = (*this) >> LSB;
+
+        // = will truncate and the result is already of the desired length
+        return Bit<SLICE_WIDTH>(shifted_val);
+    }
+
+    /**
+     * @brief same thing of select_part to be used in cases where there is
+     * variable position
+     */
+    template <int SLICE_WIDTH>
+    HOST_DEVICE auto select_part_indexed(int lsb_start_index) const
+        -> Bit<SLICE_WIDTH> {
+        static_assert(SLICE_WIDTH <= N,
+                      "Slice width cannot be larger than the vector");
+        auto shifted_val = (*this) >> lsb_start_index;
+        return Bit<SLICE_WIDTH>(shifted_val);
+    }
+
+    /**
+     * @brief part-select assignment (writing to a slice with compile-time
+     * bounds) aka Verilog's a[MSB:LSB] = value
+     * @tparam MSB of the slice (inclusive)
+     * @tparam LSB of the slice (inclusive)
+     * @tparam M width of the value being assigned. Must match the slice width.
+     * @param value bit vector to assign to the slice
+     */
+    template <int MSB, int LSB, int M>
+    HOST_DEVICE void assign_part(const Bit<M>& value) {
+        constexpr int SLICE_WIDTH = MSB - LSB + 1;
+        static_assert(MSB >= LSB, "MSB must be greater than or equal to LSB");
+        static_assert(MSB < N, "MSB is out of bounds for this Bit vector");
+        static_assert(M == SLICE_WIDTH,
+                      "Value width must match the slice width");
+
+        // create the mask
+        Bit<SLICE_WIDTH> slice_ones =
+            ~Bit<SLICE_WIDTH>(0); // 1s for the slice width
+        Bit<N> mask = Bit<N>(slice_ones) << LSB;
+
+        // shift the new value into the correct position
+        Bit<N> shifted_value = Bit<N>(value) << LSB;
+
+        *this &= ~mask;         // "hole" in the vector
+        *this |= shifted_value; // fills the "hole" with the new value
+    }
+
+    /**
+     * @brief Part-select assignment (writing to a slice with a runtime start
+     * index).
+     * @tparam M The width of the value being assigned.
+     * @param lsb_start_index The starting LSB position for the assignment.
+     * @param value The Bit vector to assign to the slice.
+     */
+    template <int M>
+    HOST_DEVICE void assign_part_indexed(int lsb_start_index,
+                                         const Bit<M>& value) {
+        // Runtime check for bounds to prevent errors.
+        if (lsb_start_index < 0 || lsb_start_index + M > N) {
+            // In production code, you might throw an exception like
+            // std::out_of_range.
+            return;
+        }
+
+        // 1. Create the mask at runtime.
+        Bit<M> slice_ones = ~Bit<M>(0);
+        Bit<N> mask = Bit<N>(slice_ones) << lsb_start_index;
+
+        // 2. Prepare the value at runtime.
+        Bit<N> shifted_value = Bit<N>(value) << lsb_start_index;
+
+        // 3. Clear the target bits and then set them.
+        *this &= ~mask;
+        *this |= shifted_value;
+    }
+
+    // #ifndef __CUDACC__
+    /**
      * @brief Converts the Bit vector to a hexadecimal string.
      * Mimics the behavior of Verilog's '$display("%h", ...)' for comparison
      * @return A std::string containing the hexadecimal representation
      */
-    // In runtime.hpp, replace your to_string() method with this one.
-    // No other changes are needed.
-    std::string to_string() const {
+    HOST std::string to_string() const {
         std::stringstream ss;
-        ss << std::hex; // Set the stream to output in hexadecimal format
+        ss << std::hex; // stream output in hexadecimal format
 
-        // We handle the most significant chunk first, as it may not be full.
+        // most significant chunk first, as it may not be full
         int msb_chunk_idx = num_chunks - 1;
 
-        // This is the key fix: Apply the mask for the most significant chunk
-        // to ensure we only consider the valid bits for this Bit<N> object.
-        uint32_t msb_val = chunks[msb_chunk_idx] & mask[msb_chunk_idx];
+        // apply the mask for the most significant chunk to ensure we only
+        // consider the valid bits for this Bit<N> object
+        uint32_t msb_val =
+            // chunks[msb_chunk_idx] & mask_holder.data[msb_chunk_idx];
+            chunks[msb_chunk_idx] & mask_at(msb_chunk_idx);
 
-        // Compute how many bits are in the last chunk
+        // compute how many bits are in the last chunk
         int bits_in_msb = (N % 32 == 0) ? 32 : (N % 32);
-
-        // Compute the number of hex characters needed for those bits
+        // compute the number of hex characters needed for those bits
         int hex_chars_in_msb = (bits_in_msb + 3) / 4;
 
-        // Print the correctly masked and sized most significant chunk
+        // print the correctly masked and sized most significant chunk
         if (hex_chars_in_msb > 0) {
             ss << std::setw(hex_chars_in_msb) << std::setfill('0') << msb_val;
         }
 
-        // Print the rest of the chunks (if any) from most to least significant
+        // print the rest of the chunks (if any) from most to least significant
         for (int i = msb_chunk_idx - 1; i >= 0; --i) {
             // Lower chunks are always full, so they are 8 hex characters (32
             // bits)
@@ -964,8 +1084,9 @@ public:
         return ss.str();
     }
 
-    std::string to_binary_string() {
-        if (N == 0) return "0";
+    HOST std::string to_binary_string() {
+        if (N == 0)
+            return "0";
 
         std::stringstream ss;
 
@@ -973,8 +1094,8 @@ public:
         int bits_in_msb = (N % 32 == 0) ? 32 : (N % 32);
 
         // Mask the most significant chunk
-        uint32_t msb_val = chunks[msb_idx] & mask[msb_idx];
-
+        // uint32_t msb_val = chunks[msb_idx] & mask[msb_idx];
+        uint32_t msb_val = chunks[msb_idx] & mask_at(msb_idx);
         // Print MSB chunk
         for (int i = bits_in_msb - 1; i >= 0; --i) {
             ss << ((msb_val >> i) & 1);
@@ -991,24 +1112,21 @@ public:
     }
 
     template <typename FormatContext>
-    static auto format(const Bit<N>& n, FormatContext& ctx) {
-        if (n.chunks.size() == 0) {
+    HOST static auto format(const Bit<N>& n, FormatContext& ctx) {
+        if (n.num_chunks == 0) {
             return fmt::format_to(ctx.out(), "{}'h0", N);
         }
 
-        auto out = fmt::format_to(
-            ctx.out(),
-            "{}'h{:X}",
-            N,
-            n.chunks[n.chunks.size()-1]
-        );
+        auto out = fmt::format_to(ctx.out(), "{}'h{:X}", N,
+                                  n.chunks[n.num_chunks - 1]);
 
-        for (ssize_t j = n.chunks.size() - 2; j >= 0; j--) {
+        for (ssize_t j = n.num_chunks - 2; j >= 0; j--) {
             out = fmt::format_to(out, "{:08X}", n.chunks[j]);
         }
 
         return out;
     }
+    // #endif
 
 private:
     /**
@@ -1017,14 +1135,18 @@ private:
     // constructors, assignments or arithmetic operators MUST call
     // apply_mask() before they finish to clean up the result to
     // preserve the class invariant
-    void apply_mask() {
+    HOST_DEVICE void apply_mask() {
         for (int i = 0; i < num_chunks; ++i)
-            chunks[i] &= mask[i];
+            // chunks[i] &= mask_holder.data[i]
+            chunks[i] &= mask_at(i);
     }
 
-    // Helper for the initializer_list constructor
+// Helper for the initializer_list constructor
+#ifndef __CUDACC__
     void copy_from_init(std::initializer_list<uint32_t> init) {
-        chunks.fill(0);
+        for (int i = 0; i < num_chunks; ++i) {
+            chunks[i] = 0;
+        }
         int i = 0;
         // Copy values from the list, ensuring we don't overflow our
         // chunks array
@@ -1039,7 +1161,9 @@ private:
 
     // Helper function to parse a hex string and populate the chunks.
     void parse_hex_string(const char* hex_string) {
-        chunks.fill(0); // starting with a clean slate.
+        for (int i = 0; i < num_chunks; ++i) {
+            chunks[i] = 0;
+        }
 
         const std::string str(hex_string);
         size_t start_pos = 0;
@@ -1092,17 +1216,19 @@ private:
         // ensuring the final chunk is properly masked
         apply_mask();
     }
+#endif
 
     // Helper to set the value from a integer type
     template <typename T>
-    void set_value(T value) {
+    HOST_DEVICE void set_value(T value) {
         static_assert(std::is_integral_v<T>,
                       "Input value must be an integral type.");
 
         // cast of the input to 64 to make the shift safe
         uint64_t temp_val = value;
 
-        chunks.fill(0);
+        for (int i = 0; i < num_chunks; ++i)
+            chunks[i] = 0;
         for (int i = 0; i < num_chunks && temp_val != 0; ++i) {
             chunks[i] = static_cast<uint32_t>(temp_val);
             temp_val >>= 32;
@@ -1116,11 +1242,17 @@ private:
     // Number of chunks for the bit vector storage
     static constexpr int num_chunks = (N + 31) / 32;
 
+    // To return a C-style array from a constexpr function, i need to wrap it in
+    // a struct
+    struct MaskArray {
+        uint32_t data[num_chunks];
+    };
+
     // The mask computation is static since the mask is shared by all
     // the objects with the same Bit<N> width
-    static constexpr std::array<uint32_t, num_chunks> compute_mask() {
+    HOST_DEVICE static constexpr MaskArray compute_mask() {
         // result accumulator
-        std::array<uint32_t, num_chunks> mask{};
+        MaskArray mask_struct{};
         // chunk by chunk
         for (int i = 0; i < num_chunks; ++i) {
             // msb chunk discriminator
@@ -1129,30 +1261,34 @@ private:
                 // chunk 1U << n_bits moves a 1 left by n_bits, then by
                 // doing -1 we flip all the bits to the rhs and obtain
                 // the mask
-                mask[i] = (1U << (N % 32)) - 1;
+                mask_struct.data[i] = (1U << (N % 32)) - 1;
             } else {
                 // full chunk case
-                mask[i] = 0xFFFFFFFF;
+                mask_struct.data[i] = 0xFFFFFFFF;
             }
         }
-        return mask;
+        return mask_struct;
     }
-    static constexpr std::array<uint32_t, num_chunks> mask = compute_mask();
+    // permanent owner for the whole program lifetime
+    // inline static constexpr MaskArray mask_holder = compute_mask();
+    // pointer, così non scrivo mask_holder ma solo mask[]
+    // static constexpr uint32_t const* mask = mask_holder.data;
+
+    HOST_DEVICE static constexpr uint32_t mask_at(int i) {
+        return (i == num_chunks - 1 && (N % 32) != 0) ? ((1u << (N % 32)) - 1u)
+                                                      : 0xFFFFFFFFu;
+    }
 
     // ============ Data storage ============
-    std::array<uint32_t, num_chunks> chunks{};
+    uint32_t chunks[num_chunks];
 };
 
 template <int N>
 struct fmt::formatter<Bit<N>> {
-
-    constexpr auto parse(format_parse_context& ctx) {
-        return ctx.begin();
-    }
+    constexpr auto parse(format_parse_context& ctx) { return ctx.begin(); }
 
     template <typename FormatContext>
     auto format(const Bit<N>& n, FormatContext& ctx) const {
         return Bit<N>::format(n, ctx);
     }
 };
-

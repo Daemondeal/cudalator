@@ -112,7 +112,8 @@ def generate_verilog(lines):
 
 def generate_cpp(lines):
     with open(os.path.join(BUILD_DIR, "test_runner.cpp"), "w") as f:
-        f.write('#include "../../runtime.hpp"\n')
+        f.write('#include "cuda_compat.hpp"\n')
+        f.write('#include "Bit.hpp"\n')
         f.write('#include <iostream>\n\n')
         f.write('int main() {\n')
         for line in lines:

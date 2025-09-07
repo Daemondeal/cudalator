@@ -46,7 +46,10 @@ struct Args {
     #[arg(long = "cpu", help = "Generate code meant to run on CPUs")]
     target_is_cpu: bool,
 
-    #[arg(long = "print-output", help = "Print the output generated code after codegen")]
+    #[arg(
+        long = "print-output",
+        help = "Print the output generated code after codegen"
+    )]
     print_output: bool,
 }
 
@@ -79,7 +82,6 @@ fn main() -> Result<()> {
 
         cir_printer::print_cir_ast(&ast, &mut ast_dump_writer)?;
     }
-
 
     let path_header = codegen_folder.join("module.hpp");
     let path_source = if args.target_is_cpu {
@@ -155,12 +157,17 @@ fn prepare_output_folder(args: &Args) -> Result<()> {
     }
 
     let output = &args.output_folder;
-    let template_folder = PathBuf::from_str("./data/runtime")?;
+
+    let template_folder = if args.target_is_cpu {
+        PathBuf::from_str("./data/runtime_cpu")?
+    } else {
+        PathBuf::from_str("./data/runtime_gpu")?
+    };
+
     let src_dir = output.join("src");
     let dbg_dir = output.join("debug");
 
     fs::create_dir_all(output)?;
-
     fs::create_dir_all(&src_dir)?;
     fs::create_dir_all(&dbg_dir)?;
 
@@ -171,8 +178,16 @@ fn prepare_output_folder(args: &Args) -> Result<()> {
         )?;
     }
 
-    copy_dir_all(template_folder.join("src").join("runtime"), src_dir.join("runtime"))?;
-    copy_dir_all(template_folder.join("src").join("libs"), src_dir.join("libs"))?;
+    copy_dir_all(
+        template_folder.join("src").join("runtime"),
+        src_dir.join("runtime"),
+    )?;
+    let bit_lib_src = PathBuf::from_str("./data/bit_lib/src")?;
+    copy_dir_all(bit_lib_src, src_dir.join("runtime"))?;
+    copy_dir_all(
+        template_folder.join("src").join("libs"),
+        src_dir.join("libs"),
+    )?;
     fs::create_dir_all(src_dir.join("codegen"))?;
     fs::copy(
         template_folder.join("CMakeLists.txt"),

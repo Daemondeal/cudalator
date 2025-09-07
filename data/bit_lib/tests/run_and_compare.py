@@ -33,7 +33,7 @@ def main():
         cpp_source = "special_ops_test.cpp"
         cpp_executable = os.path.join(BUILD_DIR, "special_ops_test")
         # Note the -I.. to find runtime.hpp in the parent directory
-        cpp_command = f"g++ -std=c++17 -I.. -o {cpp_executable} {cpp_source} && ./{cpp_executable}"
+        cpp_command = f"g++ -std=c++17 -I../src -o {cpp_executable} {cpp_source} && ./{cpp_executable}"
         cpp_output = run_command(cpp_command)
         cpp_results = parse_output(cpp_output)
         print(f"Found {len(cpp_results)} C++ test results.")

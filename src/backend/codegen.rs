@@ -14,13 +14,6 @@ pub enum CodegenTarget {
     CUDA,
 }
 
-enum OperatorType {
-    Infix(&'static str),
-    Function(&'static str),
-    // TODO: Do this properly
-    // Prefix(&'static str),
-}
-
 struct CppEmitter<'a, W: Write> {
     writer: &'a mut W,
     indent_level: i32,
@@ -136,11 +129,39 @@ impl<'a> Codegen<'a> {
         }
     }
 
+    pub fn codegen_cuda_global<W: Write>(
+        &self,
+        file: &mut CppEmitter<'a, W>
+    ) -> Result<()> {
+        match self.target {
+            CodegenTarget::CUDA => {
+                emit!(file, "__global__ ")?;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    pub fn codegen_cuda_device<W: Write>(
+        &self,
+        file: &mut CppEmitter<'a, W>
+    ) -> Result<()> {
+        match self.target {
+            CodegenTarget::CUDA => {
+                emit!(file, "__device__ ")?;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
     pub fn codegen<W: Write>(
         &self,
         source: &mut CppEmitter<'a, W>,
         header: &mut CppEmitter<'a, W>,
     ) -> Result<()> {
+        let top_module = self.ast.get_module(self.top_module_idx);
+
         // Header
         emit!(header, "#pragma once\n")?;
         emit!(header, "#include \"../runtime/Process.hpp\"\n")?;
@@ -163,6 +184,14 @@ impl<'a> Codegen<'a> {
         self.codegen_top_struct_header(header)?;
         header.emit_empty_line()?;
 
+        self.codegen_process_crossbar_header(header)?;
+        header.emit_empty_line()?;
+
+        // for process in &top_module.processes {
+        //     self.codegen_process_header(header, *process)?;
+        // }
+        // header.emit_empty_line()?;
+
         self.codegen_vcd_dump_header(header)?;
         header.emit_empty_line()?;
 
@@ -170,19 +199,22 @@ impl<'a> Codegen<'a> {
         emit!(source, "#include \"module.hpp\"\n")?;
         source.emit_empty_line()?;
 
-        emit!(header, "#include \"../runtime/Vcd.hpp\"\n")?;
+        emit!(source, "#include \"../runtime/Vcd.hpp\"\n")?;
+        emit!(source, "#include \"../runtime/ChangeType.hpp\"\n")?;
         source.emit_empty_line()?;
 
         self.codegen_diff_source(source)?;
         source.emit_empty_line()?;
 
-        let top_module = self.ast.get_module(self.top_module_idx);
         for process in &top_module.processes {
             self.codegen_process_body(source, *process)?;
             source.emit_empty_line()?;
         }
 
         self.codegen_process_container_source(source)?;
+        source.emit_empty_line()?;
+
+        self.codegen_process_crossbar_source(source)?;
         source.emit_empty_line()?;
 
         self.codegen_vcd_dump_source(source)?;
@@ -216,16 +248,10 @@ impl<'a> Codegen<'a> {
 
         source.line_start()?;
 
-        match self.target {
-            CodegenTarget::CUDA => {
-                emit!(source, "__global__ ")?;
-            }
-            _ => {}
-        }
-
+        self.codegen_cuda_global(source)?;
         emit!(
             source,
-            "void state_calculate_diff(state_{}* start, state_{}* end, diff_{}* diffs)",
+            "void state_calculate_diff(state_{}* start, state_{}* end, diff_{}* diffs, size_t len)",
             self.top_name,
             self.top_name,
             self.top_name,
@@ -235,6 +261,7 @@ impl<'a> Codegen<'a> {
         source.block_start()?;
 
         self.codegen_tid(source)?;
+
 
         for (i, signal) in top_scope.signals.iter().enumerate() {
             source.line_start()?;
@@ -297,7 +324,7 @@ impl<'a> Codegen<'a> {
             source.line_start()?;
             emit!(source, "result.push_back(Process<state_{}>(", self.top_name)?;
             emit!(source, "\"{}\", ", process_name(*process))?;
-            emit!(source, "{}, ", process_name(*process))?;
+            emit!(source, "{}, ", process.get_idx())?;
 
             // Emit the list of the ids of all signals inside the sensitivity list
             // TODO: Support negedge and posedge
@@ -352,9 +379,10 @@ impl<'a> Codegen<'a> {
         header.emit_empty_line()?;
 
         header.line_start()?;
+        self.codegen_cuda_global(header)?;
         emit!(
             header,
-            "void state_calculate_diff(state_{}* start, state_{}* end, diff_{}* diffs)",
+            "void state_calculate_diff(state_{}* start, state_{}* end, diff_{}* diffs, size_t len)",
             self.top_name,
             self.top_name,
             self.top_name,
@@ -381,6 +409,87 @@ impl<'a> Codegen<'a> {
         Ok(())
     }
 
+    fn codegen_process_crossbar_header<W: Write>(
+        &self,
+        header: &mut CppEmitter<'a, W>,
+    ) -> Result<()> {
+
+        header.line_start()?;
+        self.codegen_cuda_global(header)?;
+        emit!(
+            header,
+            "void run_process(state_{} *state, size_t len, size_t process_idx)",
+            self.top_name,
+        )?;
+        header.line_end_semicolon()?;
+        Ok(())
+    }
+
+    fn codegen_process_crossbar_source<W: Write>(
+        &self,
+        source: &mut CppEmitter<'a, W>,
+    ) -> Result<()> {
+        let top_module = self.ast.get_module(self.top_module_idx);
+
+        source.line_start()?;
+        self.codegen_cuda_global(source)?;
+        emit!(
+            source,
+            "void run_process(state_{} *state, size_t len, size_t process_idx)",
+            self.top_name,
+        )?;
+        source.line_end()?;
+
+        source.block_start()?;
+
+        source.line_start()?;
+        emit!(source, "switch (process_idx)")?;
+        source.line_end()?;
+
+        source.block_start()?;
+        for process in &top_module.processes {
+            source.line_start()?;
+            emit!(
+                source,
+                "case {}: {}(state, len); break",
+                process.get_idx(),
+                process_name(*process),
+            )?;
+            source.line_end_semicolon()?;
+        }
+
+        source.line_start()?;
+        emit!(
+            source,
+            "default: break" // TODO: Implement error handling in GPU code
+        )?;
+        source.line_end_semicolon()?;
+        source.block_end()?;
+
+        source.block_end()?;
+
+        Ok(())
+    }
+
+    #[allow(dead_code)]
+    fn codegen_process_header<W: Write>(
+        &self,
+        header: &mut CppEmitter<'a, W>,
+        process: ProcessIdx,
+    ) -> Result<()> {
+        header.line_start()?;
+        self.codegen_cuda_device(header)?;
+        emit!(
+            header,
+            "void {} (state_{} *state, size_t len)",
+            process_name(process),
+            self.top_name,
+        )?;
+
+        header.line_end_semicolon()?;
+        Ok(())
+    }
+
     fn codegen_process_body<W: Write>(
         &self,
         file: &mut CppEmitter<'a, W>,
@@ -389,14 +498,7 @@ impl<'a> Codegen<'a> {
         let ast_process = self.ast.get_process(process);
 
         file.line_start()?;
-
-        match self.target {
-            CodegenTarget::CUDA => {
-                emit!(file, "__global__ ")?;
-            }
-            _ => {}
-        }
-
+        self.codegen_cuda_device(file)?;
         emit!(
             file,
             "void {} (state_{} *state, size_t len)",
@@ -597,66 +699,77 @@ impl<'a> Codegen<'a> {
         match &expr.kind {
             ExprKind::Constant { constant } => self.codegen_constant(file, *constant)?,
             ExprKind::Unary { op, expr } => {
+                enum UnaryOpType {
+                    Prefix(&'static str),
+                    Function(&'static str),
+                }
+
                 let op_equivalent = match op {
-                    // TODO: Do this properly these should be prefix
-                    UnaryOperator::UnaryMinus => OperatorType::Infix("-"),
-                    UnaryOperator::UnaryPlus => OperatorType::Infix("+"),
-                    UnaryOperator::Not => OperatorType::Infix("!"),
-                    UnaryOperator::BinaryNegation => OperatorType::Infix("~"),
-                    UnaryOperator::ReductionAnd => todo!("codegen ReductionAnd"),
-                    UnaryOperator::ReductionNand => todo!("codegen ReductionNand"),
-                    UnaryOperator::ReductionOr => todo!("codegen ReductionOr"),
-                    UnaryOperator::ReductionNor => todo!("codegen ReductionNor"),
-                    UnaryOperator::ReductionXor => todo!("codegen ReductionXor"),
-                    UnaryOperator::ReductionXnor => todo!("codegen ReductionXnor"),
+                    UnaryOperator::UnaryMinus => UnaryOpType::Prefix("-"),
+                    UnaryOperator::UnaryPlus => UnaryOpType::Prefix("+"),
+                    UnaryOperator::Not => UnaryOpType::Prefix("!"),
+                    UnaryOperator::BinaryNegation => UnaryOpType::Prefix("~"),
+                    UnaryOperator::ReductionAnd => UnaryOpType::Function("reduce_and"),
+                    UnaryOperator::ReductionNand => UnaryOpType::Function("reduce_nand"),
+                    UnaryOperator::ReductionOr => UnaryOpType::Function("reduce_or"),
+                    UnaryOperator::ReductionNor => UnaryOpType::Function("reduce_nor"),
+                    UnaryOperator::ReductionXor => UnaryOpType::Function("reduce_xor"),
+                    UnaryOperator::ReductionXnor => UnaryOpType::Function("reduce_xnor"),
                     UnaryOperator::Posedge => unreachable!("should not codegen posedge"),
                     UnaryOperator::Negedge => unreachable!("should not codegen negedge"),
                 };
 
                 match op_equivalent {
-                    OperatorType::Infix(name) => {
+                    UnaryOpType::Prefix(name) => {
                         emit!(file, "{}", name)?;
                         self.codegen_expr(file, *expr)?;
                     }
 
-                    OperatorType::Function(name) => {
+                    UnaryOpType::Function(name) => {
                         self.codegen_expr(file, *expr)?;
                         emit!(file, ".{}()", name)?;
                     }
                 };
             }
             ExprKind::Binary { op, lhs, rhs } => {
+                enum BinaryOpType {
+                    Infix(&'static str),
+                    Function(&'static str),
+                }
+
                 let op_equivalent = match op {
-                    BinaryOperator::Subtraction => OperatorType::Infix("-"),
-                    BinaryOperator::Division => OperatorType::Infix("/"),
-                    BinaryOperator::Modulo => OperatorType::Infix("%"),
-                    BinaryOperator::Equality => OperatorType::Infix("=="),
-                    BinaryOperator::NotEquality => OperatorType::Infix("!="),
-                    BinaryOperator::GreaterThan => OperatorType::Infix(">"),
-                    BinaryOperator::GreaterThanEq => OperatorType::Infix(">="),
-                    BinaryOperator::LessThan => OperatorType::Infix("<"),
-                    BinaryOperator::LessThanEq => OperatorType::Infix("<="),
-                    BinaryOperator::LeftShift => OperatorType::Infix("<<"),
-                    BinaryOperator::RightShift => OperatorType::Infix(">>"),
-                    BinaryOperator::Addition => OperatorType::Infix("+"),
-                    BinaryOperator::Multiplication => OperatorType::Infix("*"),
-                    BinaryOperator::Power => OperatorType::Function("pow"),
-                    BinaryOperator::LogicalAnd => todo!("codegen LogicalAnd"),
-                    BinaryOperator::LogicalOr => todo!("codegen LogicalOr"),
-                    BinaryOperator::BitwiseAnd => OperatorType::Infix("&"),
-                    BinaryOperator::BitwiseOr => OperatorType::Infix("|"),
-                    BinaryOperator::BitwiseXor => OperatorType::Infix("^"),
-                    BinaryOperator::BitwiseXnor => todo!("codegen BitwiseXnor"),
+                    BinaryOperator::Subtraction => BinaryOpType::Infix("-"),
+                    BinaryOperator::Division => BinaryOpType::Infix("/"),
+                    BinaryOperator::Modulo => BinaryOpType::Infix("%"),
+                    BinaryOperator::Equality => BinaryOpType::Infix("=="),
+                    BinaryOperator::NotEquality => BinaryOpType::Infix("!="),
+                    BinaryOperator::GreaterThan => BinaryOpType::Infix(">"),
+                    BinaryOperator::GreaterThanEq => BinaryOpType::Infix(">="),
+                    BinaryOperator::LessThan => BinaryOpType::Infix("<"),
+                    BinaryOperator::LessThanEq => BinaryOpType::Infix("<="),
+                    BinaryOperator::LeftShift => BinaryOpType::Infix("<<"),
+                    BinaryOperator::RightShift => BinaryOpType::Infix(">>"),
+                    BinaryOperator::Addition => BinaryOpType::Infix("+"),
+                    BinaryOperator::Multiplication => BinaryOpType::Infix("*"),
+                    BinaryOperator::Power => BinaryOpType::Function("pow"),
+                    BinaryOperator::LogicalAnd => BinaryOpType::Infix("&&"),
+                    BinaryOperator::LogicalOr => BinaryOpType::Infix("||"),
+                    BinaryOperator::BitwiseAnd => BinaryOpType::Infix("&"),
+                    BinaryOperator::BitwiseOr => BinaryOpType::Infix("|"),
+                    BinaryOperator::BitwiseXor => BinaryOpType::Infix("^"),
+                    BinaryOperator::BitwiseXnor => BinaryOpType::Function("xnor"),
                 };
 
                 match op_equivalent {
-                    OperatorType::Infix(name) => {
+                    BinaryOpType::Infix(name) => {
+                        emit!(file, "(")?;
                         self.codegen_expr(file, *lhs)?;
                         emit!(file, " {} ", name)?;
                         self.codegen_expr(file, *rhs)?;
+                        emit!(file, ")")?;
                     }
 
-                    OperatorType::Function(name) => {
+                    BinaryOpType::Function(name) => {
                         self.codegen_expr(file, *lhs)?;
                         emit!(file, ".{}(", name)?;
                         self.codegen_expr(file, *rhs)?;
@@ -733,12 +846,16 @@ impl<'a> Codegen<'a> {
         match self.target {
             CodegenTarget::CPU => {
                 emit!(source, "int tid = 0")?;
+                source.line_end_semicolon()?;
             }
             CodegenTarget::CUDA => {
-                emit!(source, "int tid = blockIdx.x * blockSize.x + threadIdx.x")?;
+                emit!(source, "int tid = blockIdx.x * blockDim.x + threadIdx.x")?;
+                source.line_end_semicolon()?;
+                source.line_start()?;
+                emit!(source, "if (tid >= len) return")?;
+                source.line_end_semicolon()?;
             }
         }
-        source.line_end_semicolon()?;
 
         Ok(())
     }
