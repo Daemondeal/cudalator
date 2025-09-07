@@ -19,7 +19,7 @@ public:
     Circuit(int number_of_circuits);
     ~Circuit();
 
-    void apply_input(ApplyInputFunc func);
+    void apply_input();
     void eval();
 
     void open_vcd(const std::string& path, int circuit_idx);
