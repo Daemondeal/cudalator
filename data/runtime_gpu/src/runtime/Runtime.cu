@@ -35,23 +35,6 @@ void Circuit::apply_input() {
         (m_num_circuits + threads_per_block - 1) / threads_per_block;
 
     cudalator_apply_input<<<blocks, threads_per_block>>>(d_states, m_cycles, m_num_circuits);
-
-    // std::vector<StateType> temp_h_states(m_num_circuits);
-    //
-    // // current state from gpu to cpu
-    // CUDA_CHECK(cudaMemcpy(temp_h_states.data(), d_states,
-    //                       sizeof(StateType) * m_num_circuits,
-    //                       cudaMemcpyDeviceToHost));
-    //
-    // // we modify the state
-    // for (int i = 0; i < m_num_circuits; i++) {
-    //     func(temp_h_states.data(), i, m_cycles);
-    // }
-    //
-    // // we copy the modified state back on the gpu
-    // CUDA_CHECK(cudaMemcpy(d_states, temp_h_states.data(),
-    //                       sizeof(StateType) * m_num_circuits,
-    //                       cudaMemcpyHostToDevice));
 }
 
 void Circuit::eval() {
