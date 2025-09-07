@@ -1,5 +1,6 @@
 #include "Runtime.hpp"
 #include "cuda_compat.hpp"
+#include "UserProvided.hpp"
 #include <vector>
 
 Circuit::Circuit(int number_of_circuits)
@@ -28,23 +29,12 @@ Circuit::~Circuit() {
 }
 
 // We copy data to the GPU, we modify it and then copy it back
-void Circuit::apply_input(ApplyInputFunc func) {
-    std::vector<StateType> temp_h_states(m_num_circuits);
+void Circuit::apply_input() {
+    const int threads_per_block = 256;
+    const int blocks =
+        (m_num_circuits + threads_per_block - 1) / threads_per_block;
 
-    // current state from gpu to cpu
-    CUDA_CHECK(cudaMemcpy(temp_h_states.data(), d_states,
-                          sizeof(StateType) * m_num_circuits,
-                          cudaMemcpyDeviceToHost));
-
-    // we modify the state
-    for (int i = 0; i < m_num_circuits; i++) {
-        func(temp_h_states.data(), i, m_cycles);
-    }
-
-    // we copy the modified state back on the gpu
-    CUDA_CHECK(cudaMemcpy(d_states, temp_h_states.data(),
-                          sizeof(StateType) * m_num_circuits,
-                          cudaMemcpyHostToDevice));
+    cudalator_apply_input<<<blocks, threads_per_block>>>(d_states, m_cycles, m_num_circuits);
 }
 
 void Circuit::eval() {

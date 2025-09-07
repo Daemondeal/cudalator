@@ -21,7 +21,10 @@ pip install -r requirements.txt
 make
 
 # Runs on a sample circuit
-./tools/run_demo.sh ./demos/adder/
+./tools/run_demo.sh cpu ./demos/adder/
+
+# Run the same demo but on GPU
+./tools/run_demo.sh gpu ./demos/adder/
 ```
 
 ## Docs
@@ -37,7 +40,7 @@ The project includes some tools useful for contributors. They are all found in t
 
 These tools are:
 - `./tools/run_tester.sh`: Runs a systemverilog file with Verilator, Icarus Verilog and Questasim, then shows their outputs. Useful to check the expected behavior of a SV construct.
-- `./tools/run_demo.sh`: Given a folder, it will compile every `.sv` file inside with Cudalator, then copy `main.cpp` inside the resulting folder, then run the demo. Try the demos inside `./demos`
+- `./tools/run_demo.sh`: Given a folder, it will compile every `.sv` file inside with Cudalator, then copy either `main.cpp` or `main.cu` inside the resulting folder, then run the demo. Try the demos inside `./demos`
 
 ## Libraries Used
 

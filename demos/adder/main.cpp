@@ -1,25 +1,20 @@
-#include <fmt/core.h>
+#include <fmt/base.h>
 
 #include "codegen/module.hpp"
 #include "runtime/Runtime.hpp"
 
 static void apply_input(StateType* dut, int circuit_idx, int cycle) {
-    fmt::println(
-        "[{:>2}] {} + {} = {} (expected {})",
-        cycle,
-        dut[circuit_idx].a,
-        dut[circuit_idx].b,
-        dut[circuit_idx].sum,
-        dut[circuit_idx].a + dut[circuit_idx].b
-    );
+    int a = circuit_idx/2;
+    int b = circuit_idx - a;
 
-    dut[circuit_idx].a = Bit<8>(cycle);
-    dut[circuit_idx].b = Bit<8>(cycle * 2);
+    dut[circuit_idx].a = Bit<8>(a);
+    dut[circuit_idx].b = Bit<8>(b);
 }
 
 int main() {
-    Circuit circuit(1);
+    Circuit circuit(8);
 
+    circuit.open_vcd("waves.vcd", 3);
     fmt::println("Starting Simulation");
     for (int i = 0; i < 10; i++) {
         circuit.apply_input(apply_input);
