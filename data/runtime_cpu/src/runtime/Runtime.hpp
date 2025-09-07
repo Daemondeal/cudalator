@@ -31,10 +31,12 @@ public:
     void open_vcd(const std::string path, int circuit_idx);
     void dump_to_vcd();
 private:
+    int m_num_circuits;
+    int m_cycles;
+
     std::vector<ProcType> m_processes;
     std::vector<StateType> m_states;
     std::vector<StateType> m_previous_states;
-    int m_cycles;
     std::optional<VcdDump> m_vcd;
 
     void first_eval();

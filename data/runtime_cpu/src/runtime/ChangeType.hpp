@@ -3,10 +3,10 @@
 #include "Bit.hpp"
 
 enum class ChangeType {
+    NoChange,
+    Change,
     Posedge,
     Negedge,
-    Change,
-    NoChange,
 };
 
 template<>
