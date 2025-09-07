@@ -19,6 +19,7 @@ __global__ void cudalator_apply_input(StateType *dut, int cycle, size_t len) {
 int main() {
     Circuit circuit(32);
 
+    circuit.open_vcd("waves.vcd", 3);
     fmt::println("Starting Simulation");
     for (int i = 0; i < 10; i++) {
         circuit.apply_input();
