@@ -40,3 +40,16 @@ add_executable(
 target_include_directories(run_simulation PUBLIC src/libs)
 target_include_directories(run_simulation PUBLIC src/libs/fmt)
 target_link_libraries(run_simulation)
+
+# Disable some warnings
+if(ENABLE_CUDA)
+    list(APPEND CUDA_NVCC_FLAGS --diag-suppress 128)
+    list(APPEND CUDA_NVCC_FLAGS --diag-suppress 2417)
+
+    # Attach to target
+    # NOTE: `SHELL:` is needed otherwise CMake performs auto option deduplication,
+    #       putting "-option A" "-option B" as "-option A B"
+    target_compile_options(run_simulation PRIVATE
+        "SHELL:$<$<COMPILE_LANGUAGE:CUDA>:${CUDA_NVCC_FLAGS}>"
+    )
+endif()

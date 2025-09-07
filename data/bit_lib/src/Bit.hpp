@@ -44,7 +44,7 @@ template <int N>
 class Bit {
     static_assert(N > 0 && N <= 128, "The maximum supported bit width is 128");
 
-    static constexpr int max(int a, int b) { return a > b ? a : b; }
+    HOST_DEVICE static constexpr int max(int a, int b) { return a > b ? a : b; }
 
     template <int M>
     friend class Bit;
