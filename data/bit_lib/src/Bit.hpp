@@ -984,6 +984,17 @@ public:
     }
 
     /**
+     * @brief bit-select assignment (writing to a bit)
+     * aka Verilog's a[position] = value
+     * @param position bit position to update
+     * @param value bit vector to assign to the slice
+     */
+    HOST_DEVICE void assign_bit(int position, const Bit<1>& value) {
+        *this &= ~(Bit<N>(1) << position);
+        *this |= (Bit<N>(value) << position);
+    }
+
+    /**
      * @brief part-select assignment (writing to a slice with compile-time
      * bounds) aka Verilog's a[MSB:LSB] = value
      * @tparam MSB of the slice (inclusive)
