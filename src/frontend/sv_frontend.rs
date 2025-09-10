@@ -540,71 +540,41 @@ impl SvFrontend {
             }
         };
 
-        match vpi_lhs.vpi_type() {
-            sl::vpiRefObj | sl::vpiRefVar => {
-                let Some(signal) = self.get_signal_from_ref(vpi_lhs, scope) else {
-                    self.err_other(
-                        &token,
-                        format_args!("Signal {} not found", token.name.clone()),
-                    );
-                    return;
-                };
+        let select = match vpi_lhs.vpi_type() {
+            sl::vpiRefObj | sl::vpiRefVar => SelectKind::None,
 
-                let select = SelectKind::None;
+            sl::vpiPartSelect => {
+                let left_range = vpi_lhs
+                    .vpi_handle(sl::vpiLeftRange)
+                    .expect("No left range found");
+                let right_range = vpi_lhs
+                    .vpi_handle(sl::vpiRightRange)
+                    .expect("No right range found");
 
-                self.resize_expr_to_min(rhs, self.ast.get_signal(signal).size(&self.ast));
+                let lr = self.translate_expr(left_range, scope);
+                let rr = self.translate_expr(right_range, scope);
 
-                if blocking {
-                    let assignment = self.ast.add_statement(Statement {
-                        token,
-                        kind: StatementKind::Assignment {
-                            lhs: signal,
-                            rhs,
-                            select,
-                        },
-                    });
-
-                    top_statements.push(assignment);
-                } else {
-                    let typ = self.ast.get_signal(signal).typ;
-                    let temp = self.make_temp_signal(typ, scope);
-
-                    let tmp_assignment = self.ast.add_statement(Statement {
-                        token: token.clone(),
-                        kind: StatementKind::Assignment {
-                            lhs: temp,
-                            rhs,
-                            select: SelectKind::None,
-                        },
-                    });
-
-                    let tmp_ref = self.make_signal_ref(temp);
-
-                    let final_assignment = self.ast.add_statement(Statement {
-                        token,
-                        kind: StatementKind::Assignment {
-                            lhs: signal,
-                            rhs: tmp_ref,
-                            select: SelectKind::None,
-                        },
-                    });
-
-                    top_statements.push(tmp_assignment);
-                    top_statements_deferred.push(final_assignment);
-                }
+                SelectKind::Parts { lhs: lr, rhs: rr }
             }
-            sl::vpiPartSelect => todo!("assignment vpiPartSelect"),
-            sl::vpiBitSelect => todo!("assignment vpiBitSelect"),
+
+            sl::vpiBitSelect => {
+                let index = vpi_lhs.vpi_handle(sl::vpiIndex).expect("No index found");
+                let index_idx = self.translate_expr(index, scope);
+                SelectKind::Bit(index_idx)
+            }
 
             // Concatenation
             sl::vpiOperation => {
                 let op_type = vpi_lhs.vpi_get(sl::vpiOpType);
                 match op_type {
                     sl::vpiConcatOp => todo!("assignment vpiConcatOp"),
-                    _ => self.err_unsupported(
-                        &token,
-                        format_args!("operation type {op_type} in assignment."),
-                    ),
+                    _ => {
+                        self.err_unsupported(
+                            &token,
+                            format_args!("operation type {op_type} in assignment."),
+                        );
+                        SelectKind::None
+                    }
                 }
             }
 
@@ -630,13 +600,66 @@ impl SvFrontend {
                 todo!("initializer")
             }
 
-            _ => self.err_other(
+            _ => {
+                self.err_other(
+                    &token,
+                    format_args!(
+                        "Unexpected vpi type ({}) at lhs of assignment",
+                        vpi_lhs.vpi_type()
+                    ),
+                );
+                SelectKind::None
+            }
+        };
+
+        let Some(signal) = self.get_signal_from_ref(vpi_lhs, scope) else {
+            self.err_other(
                 &token,
-                format_args!(
-                    "Unexpected vpi type ({}) at lhs of assignment",
-                    vpi_lhs.vpi_type()
-                ),
-            ),
+                format_args!("Signal {} not found", token.name.clone()),
+            );
+            return;
+        };
+
+
+        self.resize_expr_to_min(rhs, self.ast.get_signal(signal).size(&self.ast));
+
+        if blocking {
+            let assignment = self.ast.add_statement(Statement {
+                token,
+                kind: StatementKind::Assignment {
+                    lhs: signal,
+                    rhs,
+                    select,
+                },
+            });
+
+            top_statements.push(assignment);
+        } else {
+            let typ = self.ast.get_signal(signal).typ;
+            let temp = self.make_temp_signal(typ, scope);
+
+            let tmp_assignment = self.ast.add_statement(Statement {
+                token: token.clone(),
+                kind: StatementKind::Assignment {
+                    lhs: temp,
+                    rhs,
+                    select: SelectKind::None,
+                },
+            });
+
+            let tmp_ref = self.make_signal_ref(temp);
+
+            let final_assignment = self.ast.add_statement(Statement {
+                token,
+                kind: StatementKind::Assignment {
+                    lhs: signal,
+                    rhs: tmp_ref,
+                    select,
+                },
+            });
+
+            top_statements.push(tmp_assignment);
+            top_statements_deferred.push(final_assignment);
         }
     }
 
