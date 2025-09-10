@@ -6,22 +6,22 @@ pub struct ScopeIdx(usize);
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct SignalIdx(usize);
 
-#[derive(Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct ProcessIdx(usize);
 
-#[derive(Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct ModuleIdx(usize);
 
-#[derive(Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct TypeIdx(usize);
 
-#[derive(Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct StatementIdx(usize);
 
-#[derive(Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct ExprIdx(usize);
 
-#[derive(Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct ConstantIdx(usize);
 
 // FIXME: We should probably have a better way of having unique ids for processes
@@ -48,6 +48,7 @@ impl SignalIdx {
 #[derive(Clone, Debug)]
 pub struct Token {
     pub name: String,
+    pub file: String,
     pub line: u32,
 }
 
@@ -55,7 +56,16 @@ impl Token {
     pub fn dummy() -> Self {
         Self {
             line: 0,
+            file: "".to_string(),
             name: "".to_string(),
+        }
+    }
+
+    pub fn named_dummy(name: impl Into<String>) -> Self {
+        Self {
+            line: 0,
+            file: "".to_string(),
+            name: name.into(),
         }
     }
 }
@@ -184,7 +194,7 @@ pub struct Statement {
     pub kind: StatementKind,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum UnaryOperator {
     UnaryMinus,
     UnaryPlus,
@@ -238,7 +248,7 @@ impl UnaryOperator {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum BinaryOperator {
     Subtraction,
     Division,
@@ -318,6 +328,7 @@ impl BinaryOperator {
     }
 }
 
+#[derive(Debug)]
 pub enum ExprKind {
     Invalid,
     Constant {

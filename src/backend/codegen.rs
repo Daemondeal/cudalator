@@ -129,10 +129,7 @@ impl<'a> Codegen<'a> {
         }
     }
 
-    pub fn codegen_cuda_global<W: Write>(
-        &self,
-        file: &mut CppEmitter<'a, W>
-    ) -> Result<()> {
+    pub fn codegen_cuda_global<W: Write>(&self, file: &mut CppEmitter<'a, W>) -> Result<()> {
         match self.target {
             CodegenTarget::CUDA => {
                 emit!(file, "__global__ ")?;
@@ -142,10 +139,7 @@ impl<'a> Codegen<'a> {
         Ok(())
     }
 
-    pub fn codegen_cuda_device<W: Write>(
-        &self,
-        file: &mut CppEmitter<'a, W>
-    ) -> Result<()> {
+    pub fn codegen_cuda_device<W: Write>(&self, file: &mut CppEmitter<'a, W>) -> Result<()> {
         match self.target {
             CodegenTarget::CUDA => {
                 emit!(file, "__device__ ")?;
@@ -261,7 +255,6 @@ impl<'a> Codegen<'a> {
         source.block_start()?;
 
         self.codegen_tid(source)?;
-
 
         for (i, signal) in top_scope.signals.iter().enumerate() {
             source.line_start()?;
@@ -413,7 +406,6 @@ impl<'a> Codegen<'a> {
         &self,
         header: &mut CppEmitter<'a, W>,
     ) -> Result<()> {
-
         header.line_start()?;
         self.codegen_cuda_global(header)?;
         emit!(
@@ -558,7 +550,7 @@ impl<'a> Codegen<'a> {
                         self.codegen_expr(file, *rhs)?;
                     }
                     SelectKind::Bit(expr_idx) => {
-                        emit!(file, ".set_bit(")?;
+                        emit!(file, ".assign_bit(")?;
                         self.codegen_expr(file, *expr_idx)?;
                         emit!(file, ", ")?;
                         self.codegen_expr(file, *rhs)?;
@@ -568,11 +560,14 @@ impl<'a> Codegen<'a> {
                         lhs: part_lhs,
                         rhs: part_rhs,
                     } => {
-                        emit!(file, ".set_range(")?;
+                        assert!(expr_is_constant(*part_lhs, self.ast));
+                        assert!(expr_is_constant(*part_rhs, self.ast));
+
+                        emit!(file, ".assign_part<")?;
                         self.codegen_expr(file, *part_lhs)?;
                         emit!(file, ", ")?;
                         self.codegen_expr(file, *part_rhs)?;
-                        emit!(file, ", ")?;
+                        emit!(file, ">(")?;
                         self.codegen_expr(file, *rhs)?;
                         emit!(file, ")")?;
                     }
@@ -672,7 +667,8 @@ impl<'a> Codegen<'a> {
             ConstantKind::Integer(int) => emit!(file, "{}", int)?,
             ConstantKind::UnsignedInteger(int) => emit!(file, "{}u", int)?,
             ConstantKind::Value { vals } => {
-                assert!(!vals.is_empty());
+                let vals = if vals.is_empty() { &vec![0] } else { vals };
+
                 if vals.len() > 1 {
                     todo!("codegen constant bigger than 32 bits");
                 }
@@ -681,8 +677,11 @@ impl<'a> Codegen<'a> {
             }
             // TODO: This should be done better
             ConstantKind::AllOnes => {
-                todo!("codegen AllOnes")
-                // emit!(file, "Bit<128>()")?;
+                // todo!("codegen AllOnes")
+                emit!(
+                    file,
+                    "Bit<128>({{0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF}})"
+                )?;
             }
             ConstantKind::AllZero => {
                 emit!(file, "Bit<128>(0)")?;
@@ -777,14 +776,28 @@ impl<'a> Codegen<'a> {
                     }
                 }
             }
-            ExprKind::Concatenation { exprs: _ } => todo!("codegen Concatenation"),
+            ExprKind::Concatenation { exprs } => {
+                let size = exprs.iter().map(|ex| get_expr_size(self.ast, *ex)).sum::<usize>();
+
+                emit!(file, "Bit<{}>::concat(", size)?;
+                for (i, expr) in exprs.iter().enumerate() {
+                    if i != 0 {
+                        emit!(file, ", ")?;
+                    }
+                    self.codegen_expr(file, *expr)?;
+                }
+                emit!(file, ")")?;
+            }
             ExprKind::PartSelect { lhs, rhs, target } => {
+                assert!(expr_is_constant(*lhs, self.ast));
+                assert!(expr_is_constant(*rhs, self.ast));
+
                 self.codegen_signal_ref(file, *target)?;
-                emit!(file, ".select_part(")?;
+                emit!(file, ".select_part<")?;
                 self.codegen_expr(file, *lhs)?;
                 emit!(file, ", ")?;
                 self.codegen_expr(file, *rhs)?;
-                emit!(file, ")")?;
+                emit!(file, ">()")?;
             }
             ExprKind::BitSelect { expr, target } => {
                 self.codegen_signal_ref(file, *target)?;
@@ -873,9 +886,11 @@ impl<'a> Codegen<'a> {
     fn signal_vcd_name(&self, idx: SignalIdx) -> &str {
         let signal = self.ast.get_signal(idx);
 
-        signal.full_name.split_once('.')
-          .map(|(_, rest)| rest)
-          .unwrap_or(&signal.full_name)
+        signal
+            .full_name
+            .split_once('.')
+            .map(|(_, rest)| rest)
+            .unwrap_or(&signal.full_name)
     }
 
     // Generate the name to refer to a signal inside a kernel
@@ -900,26 +915,23 @@ impl<'a> Codegen<'a> {
         Ok(())
     }
 
-    fn codegen_vcd_dump_header<W: Write>(
-        &self,
-        header: &mut CppEmitter<'a, W>,
-    ) -> Result<()> {
+    fn codegen_vcd_dump_header<W: Write>(&self, header: &mut CppEmitter<'a, W>) -> Result<()> {
         header.line_start()?;
         emit!(header, "void state_vcd_dump_names(fmt::ostream &file)")?;
         header.line_end_semicolon()?;
 
         header.line_start()?;
-        emit!(header, "void state_vcd_dump_values(state_{} *state, int tid, fmt::ostream &file)", self.top_name)?;
+        emit!(
+            header,
+            "void state_vcd_dump_values(state_{} *state, int tid, fmt::ostream &file)",
+            self.top_name
+        )?;
         header.line_end_semicolon()?;
 
         Ok(())
     }
 
-    fn codegen_vcd_dump_source<W: Write>(
-        &self,
-        source: &mut CppEmitter<'a, W>,
-    ) -> Result<()> {
-
+    fn codegen_vcd_dump_source<W: Write>(&self, source: &mut CppEmitter<'a, W>) -> Result<()> {
         source.line_start()?;
         emit!(source, "void state_vcd_dump_names(fmt::ostream &file)")?;
         source.line_end()?;
@@ -940,7 +952,11 @@ impl<'a> Codegen<'a> {
         source.block_end()?;
 
         source.line_start()?;
-        emit!(source, "void state_vcd_dump_values(state_{} *state, int tid, fmt::ostream &file)", self.top_name)?;
+        emit!(
+            source,
+            "void state_vcd_dump_values(state_{} *state, int tid, fmt::ostream &file)",
+            self.top_name
+        )?;
         source.line_end()?;
 
         source.block_start()?;
@@ -961,6 +977,43 @@ impl<'a> Codegen<'a> {
     }
 }
 
+pub fn expr_eval_to_constant(expr: ExprIdx, ast: &Ast) -> Option<usize> {
+    let expr = ast.get_expr(expr);
+    match expr.kind {
+        ExprKind::Constant { constant } => {
+            let constant = ast.get_constant(constant);
+            match &constant.kind {
+                ConstantKind::Integer(i) => Some(*i as usize),
+                ConstantKind::UnsignedInteger(i) => Some(*i as usize),
+                ConstantKind::Value { vals } => {
+                    assert!(!vals.is_empty());
+                    if vals.len() > 2 {
+                        todo!("constants larger than a u64");
+                    }
+
+                    if vals.len() == 2 {
+                        Some((vals[0] as usize) | ((vals[1] as usize) << 32))
+                    } else {
+                        Some(vals[0] as usize)
+                    }
+                }
+                ConstantKind::AllZero => Some(0),
+                ConstantKind::AllOnes => None,
+                ConstantKind::Invalid => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+pub fn expr_is_constant(expr: ExprIdx, ast: &Ast) -> bool {
+    let expr = ast.get_expr(expr);
+    match expr.kind {
+        ExprKind::Constant { .. } => true,
+        _ => false,
+    }
+}
+
 pub fn codegen_into_files<W: Write>(
     ast: &Ast,
     source: &mut W,
@@ -975,6 +1028,68 @@ pub fn codegen_into_files<W: Write>(
     codegen.codegen(&mut source_emitter, &mut header_emitter)?;
 
     Ok(())
+}
+
+pub fn get_expr_size(ast: &Ast, expr_idx: ExprIdx) -> usize {
+    match &ast.get_expr(expr_idx).kind {
+        ExprKind::Invalid => 0,
+        ExprKind::Constant { constant } => ast.get_constant(*constant).size,
+        ExprKind::Unary { op, expr } => match op {
+            UnaryOperator::BinaryNegation
+            | UnaryOperator::UnaryPlus
+            | UnaryOperator::UnaryMinus => get_expr_size(ast, *expr),
+            UnaryOperator::Not
+            | UnaryOperator::ReductionAnd
+            | UnaryOperator::ReductionNand
+            | UnaryOperator::ReductionOr
+            | UnaryOperator::ReductionNor
+            | UnaryOperator::ReductionXor
+            | UnaryOperator::ReductionXnor
+            | UnaryOperator::Posedge
+            | UnaryOperator::Negedge => unreachable!(),
+        },
+        ExprKind::Binary { op, lhs, rhs } => {
+            match op {
+                BinaryOperator::Addition
+                | BinaryOperator::Subtraction
+                | BinaryOperator::Division
+                | BinaryOperator::Modulo
+                | BinaryOperator::Multiplication
+                | BinaryOperator::BitwiseAnd
+                | BinaryOperator::BitwiseOr
+                | BinaryOperator::BitwiseXor
+                | BinaryOperator::BitwiseXnor => usize::max(get_expr_size(ast, *lhs), get_expr_size(ast, *rhs)),
+
+                BinaryOperator::LogicalAnd
+                | BinaryOperator::LogicalOr
+                | BinaryOperator::Equality
+                | BinaryOperator::NotEquality
+                | BinaryOperator::GreaterThan
+                | BinaryOperator::GreaterThanEq
+                | BinaryOperator::LessThan
+                | BinaryOperator::LessThanEq => 1,
+
+                BinaryOperator::LeftShift | BinaryOperator::RightShift | BinaryOperator::Power => {
+                    get_expr_size(ast, *lhs)
+                }
+            }
+        }
+        ExprKind::Concatenation { exprs } => exprs.iter().map(|e| get_expr_size(ast, *e)).sum(),
+        ExprKind::PartSelect {
+            lhs,
+            rhs,
+            target: _,
+        } => {
+            assert!(expr_is_constant(*lhs, ast));
+            assert!(expr_is_constant(*rhs, ast));
+
+            expr_eval_to_constant(*lhs, ast).unwrap()
+                + expr_eval_to_constant(*rhs, ast).unwrap()
+                + 1
+        }
+        ExprKind::BitSelect { expr: _, target: _ } => 1,
+        ExprKind::SignalRef { signal } => ast.get_signal(*signal).size(ast),
+    }
 }
 
 fn gather_all_static_signals(ast: &Ast) -> Vec<SignalIdx> {

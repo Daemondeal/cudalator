@@ -5,7 +5,7 @@ mod cir_printer;
 mod backend;
 mod frontend;
 
-use std::env;
+use std::env::{self, current_dir};
 use std::fs::{self, File};
 use std::io::{self, BufWriter, Write};
 use std::path::{Path, PathBuf};
@@ -140,7 +140,17 @@ fn run_compiler_pipeline(args: &Args) -> Option<Ast> {
         Ok(ast) => ast,
         Err(errors) => {
             for err in errors {
-                error!("line {}: {}", err.token.line, err.message);
+                let path: &str = current_dir()
+                    .ok()
+                    .and_then(|cwd| {
+                        Path::new(&err.token.file)
+                            .strip_prefix(&cwd)
+                            .ok()
+                            .and_then(|rel| rel.to_str())
+                    })
+                    .unwrap_or(&err.token.file);
+
+                error!("{path}:{}: {}", err.token.line, err.message);
             }
             return None;
         }

@@ -31,13 +31,20 @@ workdir="$PWD/private/$demo_name"
 rm -rf $workdir
 mkdir -p "$PWD/private"
 
+if [[ -f "$top_folder/top.txt" ]] ; then
+  top_entity="--top $(cat "$top_folder/top.txt")"
+else
+  top_entity=""
+fi
+
+
 # ---- CHANGED: generate CPU or GPU ----
 if [ "$CPU" = true ]; then
   echo "---> Generating CPU version ..."
-  cargo run -- $sv_files -o $workdir --cpu
+  cargo run -- $sv_files -o $workdir --cpu $top_entity
 else
   echo "---> Generating GPU version ..."
-  cargo run -- $sv_files -o $workdir
+  cargo run -- $sv_files -o $workdir $top_entity
 fi
 
 # ---- CHANGED: drop in the right main (cpp for CPU, prefer cu for GPU) ----
