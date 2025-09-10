@@ -24,7 +24,7 @@ __global__ void cudalator_apply_input(StateType *dut, int cycle, size_t len) {
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
     if (tid >= len) return;
 
-    int seed = cycle % tid;
+    int seed = cycle ^ tid;
     xorshift32_state rng;
     rng.a = seed;
     xorshift32(&rng);
