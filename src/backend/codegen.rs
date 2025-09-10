@@ -677,10 +677,9 @@ impl<'a> Codegen<'a> {
             }
             // TODO: This should be done better
             ConstantKind::AllOnes => {
-                // todo!("codegen AllOnes")
                 emit!(
                     file,
-                    "Bit<128>({{0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF}})"
+                    "~Bit<128>(0)"
                 )?;
             }
             ConstantKind::AllZero => {
