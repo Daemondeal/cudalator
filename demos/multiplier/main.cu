@@ -11,12 +11,12 @@ struct xorshift32_state {
 /* The state must be initialized to non-zero */
 __device__ uint32_t xorshift32(xorshift32_state *state)
 {
-	/* Algorithm "xor" from p. 4 of Marsaglia, "Xorshift RNGs" */
-	uint32_t x = state->a;
-	x ^= x << 13;
-	x ^= x >> 17;
-	x ^= x << 5;
-	return state->a = x;
+    /* Algorithm "xor" from p. 4 of Marsaglia, "Xorshift RNGs" */
+    uint32_t x = state->a;
+    x ^= x << 13;
+    x ^= x >> 17;
+    x ^= x << 5;
+    return state->a = x;
 }
 
 
