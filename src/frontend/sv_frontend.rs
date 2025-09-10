@@ -1726,6 +1726,7 @@ impl SvFrontend {
     }
 
     // TODO: We should probably make this fixed and not recreate it every time.
+    #[allow(dead_code)]
     fn make_int_typ(&mut self) -> TypeIdx {
         let token = Token {
             line: 0,
@@ -1758,6 +1759,7 @@ impl SvFrontend {
         })
     }
 
+    #[allow(dead_code)]
     fn make_constant_zero(&mut self) -> ExprIdx {
         let token = Token {
             line: 0,
