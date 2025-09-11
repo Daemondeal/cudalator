@@ -8,6 +8,7 @@
 #include "Bit.hpp"
 #include "Process.hpp"
 
+#include "Stats.hpp"
 #include "../codegen/module.hpp"
 #include "Vcd.hpp"
 
@@ -30,10 +31,15 @@ public:
 
     void open_vcd(const std::string path, int circuit_idx);
     void dump_to_vcd();
+
+    const Stats &get_stats() const {
+        return m_stats;
+    }
 private:
     int m_num_circuits;
     int m_cycles;
 
+    Stats m_stats;
     std::vector<ProcType> m_processes;
     std::vector<StateType> m_states;
     std::vector<StateType> m_previous_states;
