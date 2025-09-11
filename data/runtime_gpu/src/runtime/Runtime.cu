@@ -4,7 +4,7 @@
 #include <vector>
 
 Circuit::Circuit(int number_of_circuits)
-    : m_num_circuits(number_of_circuits), m_cycles(0) {
+    : m_num_circuits(number_of_circuits), m_cycles(0), m_stats({}) {
     // allocate on the gpu
     size_t states_size = sizeof(StateType) * m_num_circuits;
     size_t diffs_size = sizeof(DiffType) * m_num_circuits;
@@ -16,6 +16,10 @@ Circuit::Circuit(int number_of_circuits)
     CUDA_CHECK(cudaHostAlloc(&h_diffs, diffs_size, cudaHostAllocDefault));
     CUDA_CHECK(cudaMemset(d_states, 0, states_size));
     CUDA_CHECK(cudaMemset(d_previous_states, 0, states_size));
+
+    m_stats.number_of_circuits = m_num_circuits;
+    m_stats.state_array_size = sizeof(StateType) * states_size * 2;
+    m_stats.diff_array_size = sizeof(DiffType) * diffs_size;
 
     m_processes = make_processes();
     first_eval();
@@ -43,12 +47,18 @@ void Circuit::eval() {
     const int blocks =
         (m_num_circuits + threads_per_block - 1) / threads_per_block;
 
+    m_stats.start_counter(PerfEvent::DoDeltaCycle);
     while (true) {
+        m_stats.start_counter(PerfEvent::DoIteration);
+
+        m_stats.start_counter(PerfEvent::CalculateStateDiff);
         // launching the diff kernel
         state_calculate_diff<<<blocks, threads_per_block>>>(
             d_previous_states, d_states, d_diffs, m_num_circuits);
         CUDA_CHECK(cudaGetLastError());
+        m_stats.stop_counter(PerfEvent::CalculateStateDiff);
 
+        m_stats.start_counter(PerfEvent::PopulateReadyQueue);
         // coying the diff results
         CUDA_CHECK(cudaMemcpy(h_diffs, d_diffs,
                               sizeof(DiffType) * m_num_circuits,
@@ -72,35 +82,47 @@ void Circuit::eval() {
             if (should_run)
                 ready_queue.push_back(proc);
         }
+        m_stats.stop_counter(PerfEvent::PopulateReadyQueue);
 
         // if empy, it's already stable
         if (ready_queue.empty()) {
+            m_stats.stop_counter(PerfEvent::DoIteration);
             break;
         }
+        m_stats.kernels_launched += ready_queue.size();
 
+        m_stats.start_counter(PerfEvent::CloneStates);
         // save current state for next diff computation
         CUDA_CHECK(cudaMemcpy(d_previous_states, d_states,
                               sizeof(StateType) * m_num_circuits,
                               cudaMemcpyDeviceToDevice));
+        m_stats.stop_counter(PerfEvent::CloneStates);
 
+        m_stats.start_counter(PerfEvent::RunKernels);
         // launch of all the ready kernels
         for (const auto& proc : ready_queue) {
             run_process<<<blocks, threads_per_block>>>(d_states, m_num_circuits,
                                                        proc.id);
             CUDA_CHECK(cudaGetLastError());
         }
+        m_stats.stop_counter(PerfEvent::RunKernels);
 
         ready_queue.clear();
+        m_stats.stop_counter(PerfEvent::DoIteration);
+        m_stats.iterations_done++;
     }
     // end of delta cycle step
 
     m_cycles++;
-    dump_to_vcd();
+    m_stats.delta_times_ran++;
 
     // state copy before next eval call
     CUDA_CHECK(cudaMemcpy(d_previous_states, d_states,
                           sizeof(StateType) * m_num_circuits,
                           cudaMemcpyDeviceToDevice));
+    m_stats.stop_counter(PerfEvent::DoDeltaCycle);
+
+    dump_to_vcd();
 }
 
 void Circuit::first_eval() {
@@ -114,6 +136,7 @@ void Circuit::first_eval() {
     CUDA_CHECK(cudaDeviceSynchronize());
     eval();
     m_cycles--;
+    m_stats.kernels_launched += m_processes.size();
 }
 
 // no need to do anything below here

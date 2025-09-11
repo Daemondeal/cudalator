@@ -167,10 +167,10 @@ void Circuit::eval() {
     }
     m_cycles++;
     m_stats.delta_times_ran++;
-    m_stats.stop_counter(PerfEvent::DoDeltaCycle);
 
     clone_state(m_states, m_previous_states);
 
+    m_stats.stop_counter(PerfEvent::DoDeltaCycle);
     dump_to_vcd();
 }
 

@@ -33,6 +33,7 @@ add_executable(
     ${MAIN_SOURCE_FILE}
     ${GENERATED_SOURCE_FILE}
     ${RUNTIME_SOURCE_FILE}
+    src/runtime/Stats.cpp
     src/libs/format.cc
     src/libs/os.cc
 )
