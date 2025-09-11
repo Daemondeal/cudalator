@@ -38,7 +38,7 @@ __global__ void cudalator_apply_input(StateType *dut, int cycle, size_t len) {
 int main() {
     Circuit circuit(256);
 
-    constexpr int MAX = 100;
+    constexpr int MAX = 1000;
     constexpr int STEP = std::max(MAX / 1000, 1);
 
     // circuit.open_vcd("waves.vcd", 3);
