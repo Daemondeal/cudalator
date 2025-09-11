@@ -27,7 +27,7 @@ Circuit::Circuit(int number_of_circuits)
     m_processes = make_processes();
 
     m_stats.number_of_circuits = m_num_circuits;
-    m_stats.state_array_size = sizeof(StateType) * m_states.size() * m_previous_states.size();
+    m_stats.state_array_size = sizeof(StateType) * (m_states.size() + m_previous_states.size());
     m_stats.diff_array_size = sizeof(DiffType);
 
     first_eval();
