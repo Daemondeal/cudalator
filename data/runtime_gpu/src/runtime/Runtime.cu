@@ -18,8 +18,8 @@ Circuit::Circuit(int number_of_circuits)
     CUDA_CHECK(cudaMemset(d_previous_states, 0, states_size));
 
     m_stats.number_of_circuits = m_num_circuits;
-    m_stats.state_array_size = sizeof(StateType) * states_size * 2;
-    m_stats.diff_array_size = sizeof(DiffType) * diffs_size;
+    m_stats.state_array_size = states_size * 2;
+    m_stats.diff_array_size = diffs_size;
 
     m_processes = make_processes();
     first_eval();
