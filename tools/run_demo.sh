@@ -28,7 +28,7 @@ if [[ $? -eq 0 ]] ; then
   compute=$(nvidia-smi --query-gpu=compute_cap --format=noheader)
 
   echo "Detected compute version $compute"
-  compute_version_string="-DCUDA_COMPUTE_VERSION=$($compute | tr -d '.')"
+  compute_version_string="-DCUDA_COMPUTE_VERSION=$(echo $compute | tr -d '.')"
 fi
 
 set -e
