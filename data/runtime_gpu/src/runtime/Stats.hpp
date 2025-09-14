@@ -18,6 +18,8 @@ struct StatInfo {
 
 enum class PerfEvent {
     CalculateStateDiff,
+    MemcopyStateForPopulating,
+    ActuallyPopulating,
     PopulateReadyQueue,
     CloneStates,
     RunKernels,

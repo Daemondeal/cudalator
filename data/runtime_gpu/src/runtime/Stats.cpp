@@ -47,6 +47,7 @@ std::vector<StatInfo> Stats::gather_stats() const {
     double iters = static_cast<double>(iterations_done);
 
     auto pc_state_diff = get_counter(PerfEvent::CalculateStateDiff);
+    auto pc_memcopy_state = get_counter(PerfEvent::MemcopyStateForPopulating);
     auto pc_ready_queue = get_counter(PerfEvent::PopulateReadyQueue);
     auto pc_clone_states = get_counter(PerfEvent::CloneStates);
     auto pc_run_kernels = get_counter(PerfEvent::RunKernels);
@@ -63,6 +64,7 @@ std::vector<StatInfo> Stats::gather_stats() const {
     STAT_MEMORY_SIZE("Diff Array Size",            diff_array_size);
 
     STAT_TIME   ("Total Time to Diff States",      pc_state_diff.total_time);
+    STAT_TIME   ("Total Time to Memcopy State",    pc_memcopy_state.total_time);
     STAT_TIME   ("Total Time to Populate Queue",   pc_ready_queue.total_time);
     STAT_TIME   ("Total Time to Clone States",     pc_clone_states.total_time);
     STAT_TIME   ("Total Time to Run Kernels",      pc_run_kernels.total_time);
@@ -70,6 +72,7 @@ std::vector<StatInfo> Stats::gather_stats() const {
     STAT_TIME   ("Total Time to Do a Delta Cycle", pc_do_delta_cycle.total_time);
 
     STAT_TIME   ("Average Time to Diff",             pc_state_diff.total_time / pc_state_diff.count);
+    STAT_TIME   ("Average Time to Memcopy State",    pc_memcopy_state.total_time / pc_clone_states.count);
     STAT_TIME   ("Average Time to Populate Queue",   pc_ready_queue.total_time / pc_clone_states.count);
     STAT_TIME   ("Average Time to Clone States",     pc_clone_states.total_time / pc_clone_states.count);
     STAT_TIME   ("Average Time to Run Kernels",      pc_run_kernels.total_time / pc_run_kernels.count);
@@ -77,6 +80,7 @@ std::vector<StatInfo> Stats::gather_stats() const {
     STAT_TIME   ("Average Time to Do a Delta Cycle", pc_do_delta_cycle.total_time / pc_do_delta_cycle.count);
 
     STAT_PERCENTAGE("Pct. iter time spent on state diff",             100 * pc_state_diff.total_time / pc_do_iterations.total_time );
+    STAT_PERCENTAGE("Pct. iter time spent on memcopying state",       100 * pc_memcopy_state.total_time / pc_do_iterations.total_time );
     STAT_PERCENTAGE("Pct. iter time spent on populating ready queue", 100 * pc_ready_queue.total_time / pc_do_iterations.total_time );
     STAT_PERCENTAGE("Pct. iter time spent on running kernels ",       100 * pc_run_kernels.total_time / pc_do_iterations.total_time );
     STAT_PERCENTAGE("Pct. iter time spent on state cloning per iter", 100 * pc_clone_states.total_time / pc_do_iterations.total_time );

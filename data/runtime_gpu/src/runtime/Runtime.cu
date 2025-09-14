@@ -1,4 +1,5 @@
 #include "Runtime.hpp"
+#include "Stats.hpp"
 #include "cuda_compat.hpp"
 #include "UserProvided.hpp"
 #include <vector>
@@ -63,7 +64,9 @@ void Circuit::eval() {
         CUDA_CHECK(cudaMemcpy(h_diffs, d_diffs,
                               sizeof(DiffType) * m_num_circuits,
                               cudaMemcpyDeviceToHost));
+        m_stats.stop_counter(PerfEvent::PopulateReadyQueue);
 
+        m_stats.start_counter(PerfEvent::PopulateReadyQueue);
         // cpu computation of the ready queue
         for (const auto& proc : m_processes) {
             bool should_run = false;
