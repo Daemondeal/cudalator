@@ -21,10 +21,10 @@ pip install -r requirements.txt
 make
 
 # Runs on a sample circuit
-./tools/run_demo.sh cpu ./demos/adder/
+./tools/run_demo.sh cpu ./demos/multiplier/
 
 # Run the same demo but on GPU
-./tools/run_demo.sh gpu ./demos/adder/
+./tools/run_demo.sh gpu ./demos/multiplier/
 ```
 
 ## Docs
