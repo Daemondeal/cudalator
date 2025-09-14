@@ -59,12 +59,12 @@ void Circuit::eval() {
         CUDA_CHECK(cudaGetLastError());
         m_stats.stop_counter(PerfEvent::CalculateStateDiff);
 
-        m_stats.start_counter(PerfEvent::PopulateReadyQueue);
+        m_stats.start_counter(PerfEvent::MemcopyStateForPopulating);
         // coying the diff results
         CUDA_CHECK(cudaMemcpy(h_diffs, d_diffs,
                               sizeof(DiffType) * m_num_circuits,
                               cudaMemcpyDeviceToHost));
-        m_stats.stop_counter(PerfEvent::PopulateReadyQueue);
+        m_stats.stop_counter(PerfEvent::MemcopyStateForPopulating);
 
         m_stats.start_counter(PerfEvent::PopulateReadyQueue);
         // cpu computation of the ready queue
