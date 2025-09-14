@@ -3,11 +3,15 @@ cmake_minimum_required(VERSION 3.21)
 # default to OFF
 option(ENABLE_CUDA "Enable CUDA for GPU acceleration" OFF)
 
+set(CUDA_VERSION 53 CACHE STRING "Cuda Version")
+
 if(ENABLE_CUDA)
+    message(STATUS "Using cuda version ${CUDA_VERSION}")
+
     project(run_simulation VERSION 0.1.0 LANGUAGES CXX CUDA)
     set(CMAKE_CUDA_STANDARD 17)
     set(CMAKE_CUDA_STANDARD_REQUIRED ON)
-    set(CMAKE_CUDA_ARCHITECTURES 53)
+    set(CMAKE_CUDA_ARCHITECTURES ${CUDA_VERSION})
 else()
     project(run_simulation VERSION 0.1.0 LANGUAGES CXX)
 endif()

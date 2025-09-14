@@ -1,7 +1,7 @@
 .PHONY: all
 
 all: ./build/build.timestamp
-	cd build && make && ./run_simulation
+	cd build && $(MAKE) && ./run_simulation
 
 
 ./build/build.timestamp:
