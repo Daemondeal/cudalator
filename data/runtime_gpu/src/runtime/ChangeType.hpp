@@ -3,10 +3,10 @@
 #include "Bit.hpp"
 
 enum class ChangeType {
+    NoChange,
+    Change,
     Posedge,
     Negedge,
-    Change,
-    NoChange,
 };
 
 template <>
@@ -60,4 +60,19 @@ HOST_DEVICE static ChangeType change_combine(ChangeType a, ChangeType b) {
         return (b == ChangeType::Negedge) ? ChangeType::Negedge : ChangeType::Change;
     }
     return ChangeType::NoChange;
+}
+
+static const char *change_to_str(ChangeType a) {
+    switch (a) {
+    case ChangeType::NoChange:
+        return "NoChange";
+    case ChangeType::Change:
+        return "Change";
+    case ChangeType::Posedge:
+        return "Posedge";
+    case ChangeType::Negedge:
+        return "Negedge";
+    }
+
+    return "Invalid";
 }
