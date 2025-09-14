@@ -22,15 +22,13 @@ else
 fi
 
 
-cuda_define=""
+compute_version_string=""
+type nvidia-smi
+if [[ $? -eq 0 ]] ; then
+  compute=$(nvidia-smi --query-gpu=compute_cap --format=noheader)
 
-type nvidia-smi > /dev/null
-if [[ $? -ne 0 ]] ; then
-  echo "No cuda version detected"
-else
-  cuda_version=$(nvidia-smi | grep "CUDA Version" | tr '|' ' ' | awk '{print $NF}' | tr -d '.')
-  echo "Detected CUDA version $cuda_version"
-  cuda_define="-DCUDA_VERSION=$cuda_version"
+  echo "Detected compute version $compute"
+  compute_version_string="-DCUDA_COMPUTE_VERSION=$($compute | tr -d '.')"
 fi
 
 set -e
@@ -78,6 +76,6 @@ cd $workdir
 if [ "$CPU" = true ]; then
   make -j4
 else
-  make -j4 CMAKE_ARGS="-DENABLE_CUDA=ON $cuda_define"
+  make -j4 CMAKE_ARGS="-DENABLE_CUDA=ON $cuda_define $compute_version_string"
 fi
 
