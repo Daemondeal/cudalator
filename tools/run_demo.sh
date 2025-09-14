@@ -21,6 +21,16 @@ else
   exit -1
 fi
 
+
+compute_version_string=""
+type nvidia-smi
+if [[ $? -eq 0 ]] ; then
+  compute=$(nvidia-smi --query-gpu=compute_cap --format=noheader)
+
+  echo "Detected compute version $compute"
+  compute_version_string="-DCUDA_COMPUTE_VERSION=$(echo $compute | tr -d '.')"
+fi
+
 set -e
 
 demo_name=$(basename $top_folder)
@@ -66,6 +76,6 @@ cd $workdir
 if [ "$CPU" = true ]; then
   make -j4
 else
-  make -j4 CMAKE_ARGS=-DENABLE_CUDA=ON
+  make -j4 CMAKE_ARGS="-DENABLE_CUDA=ON $cuda_define $compute_version_string"
 fi
 

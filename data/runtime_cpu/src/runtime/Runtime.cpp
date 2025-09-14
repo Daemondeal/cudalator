@@ -1,7 +1,9 @@
 #include "Runtime.hpp"
 #include "ChangeType.hpp"
+#include "Stats.hpp"
 #include "Vcd.hpp"
 #include <cassert>
+#include <chrono>
 #include <cstdlib>
 #include <fmt/base.h>
 #include <fmt/format.h>
@@ -15,6 +17,7 @@ Circuit::Circuit(int number_of_circuits)
       m_cycles(0),
       m_previous_states({}),
       m_states({}),
+      m_stats({}),
       m_processes({}) {
     for (int i = 0; i < number_of_circuits; i++) {
         m_states.push_back(StateType());
@@ -22,6 +25,10 @@ Circuit::Circuit(int number_of_circuits)
     }
 
     m_processes = make_processes();
+
+    m_stats.number_of_circuits = m_num_circuits;
+    m_stats.state_array_size = sizeof(StateType) * (m_states.size() + m_previous_states.size());
+    m_stats.diff_array_size = sizeof(DiffType);
 
     first_eval();
 }
@@ -65,10 +72,14 @@ static void clone_state(std::vector<StateType>& from,
 void Circuit::eval() {
     std::vector<ProcType> ready_queue;
 
-    size_t iters = 0;
+    m_stats.start_counter(PerfEvent::DoDeltaCycle);
+    // Iteration
     while (1) {
         DiffType diff{};
 
+        m_stats.start_counter(PerfEvent::DoIteration);
+
+        m_stats.start_counter(PerfEvent::CalculateStateDiff);
         // Check which processess need to be run
         for (int i = 0; i < m_num_circuits; i++) {
             DiffType diff_tmp;
@@ -96,7 +107,9 @@ void Circuit::eval() {
                 }
             }
         }
+        m_stats.stop_counter(PerfEvent::CalculateStateDiff);
 
+        m_stats.start_counter(PerfEvent::PopulateReadyQueue);
         for (auto& proc : m_processes) {
             bool should_run = false;
             for (auto [signal_idx, change_type] : proc.sensitivity) {
@@ -126,28 +139,38 @@ void Circuit::eval() {
                 ready_queue.push_back(proc);
             }
         }
+        m_stats.stop_counter(PerfEvent::PopulateReadyQueue);
 
+        m_stats.start_counter(PerfEvent::CloneStates);
         clone_state(m_states, m_previous_states);
-
+        m_stats.stop_counter(PerfEvent::CloneStates);
         // If none, we are done
         if (ready_queue.size() == 0) {
+            m_stats.stop_counter(PerfEvent::DoIteration);
             break;
         }
+        m_stats.kernels_launched += ready_queue.size();
 
+        m_stats.start_counter(PerfEvent::RunKernels);
         // Run the processes
         for (auto& proc : ready_queue) {
             for (int i = 0; i < m_num_circuits; i++) {
                 run_process(&m_states[i], 1, proc.id);
             }
         }
+        m_stats.stop_counter(PerfEvent::RunKernels);
 
         ready_queue.clear();
-        iters++;
+        m_stats.iterations_done++;
+
+        m_stats.stop_counter(PerfEvent::DoIteration);
     }
     m_cycles++;
+    m_stats.delta_times_ran++;
 
     clone_state(m_states, m_previous_states);
 
+    m_stats.stop_counter(PerfEvent::DoDeltaCycle);
     dump_to_vcd();
 }
 
@@ -157,6 +180,7 @@ void Circuit::first_eval() {
             run_process(&m_states[i], 1, proc.id);
         }
     }
+    m_stats.kernels_launched += m_processes.size();
 
     eval();
     m_cycles--;

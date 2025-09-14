@@ -9,6 +9,7 @@
 #include "../codegen/module.hpp"
 #include "Process.hpp"
 #include "Vcd.hpp"
+#include "Stats.hpp"
 
 using ProcType = Process<StateType>;
 using ApplyInputFunc = void (*)(StateType* state, int idx, int cycle);
@@ -25,10 +26,15 @@ public:
     void open_vcd(const std::string& path, int circuit_idx);
     void dump_to_vcd();
 
+    const Stats &get_stats() const {
+        return m_stats;
+    }
+
 private:
     int m_num_circuits;
     int m_cycles;
 
+    Stats m_stats;
     StateType* d_states;
     StateType* d_previous_states;
     DiffType* d_diffs;

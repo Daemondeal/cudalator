@@ -16,6 +16,7 @@ add_executable(
     src/main.cpp
     src/codegen/module.cpp
     src/runtime/Runtime.cpp
+    src/runtime/Stats.cpp
     src/libs/format.cc
     src/libs/os.cc
 )

@@ -36,13 +36,35 @@ __global__ void cudalator_apply_input(StateType *dut, int cycle, size_t len) {
 }
 
 int main() {
-    Circuit circuit(64);
+    Circuit circuit(256);
 
-    circuit.open_vcd("waves.vcd", 3);
+    constexpr int MAX = 1000;
+    constexpr int STEP = std::max(MAX / 1000, 1);
+
+    // circuit.open_vcd("waves.vcd", 3);
     fmt::println("Starting Simulation");
-    for (int i = 0; i < 20; i++) {
+    for (int i = 0; i < MAX; i++) {
+        if (i % STEP == 0) {
+            int steps = (20 * (i+1)) / MAX;
+
+            fmt::print("\r[");
+            for (int j = 0; j < steps; j++) {
+                fmt::print("#");
+            }
+
+            for (int j = steps; j < 20; j++) {
+                fmt::print(".");
+            }
+            fmt::print("] {}/{}", i+1, MAX);
+            fflush(stdout);
+        }
+
+
         circuit.apply_input();
         circuit.eval();
     }
+    fmt::println("");
     fmt::println("Simulation Done!");
+
+    circuit.get_stats().print();
 }
