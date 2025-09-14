@@ -4,6 +4,7 @@
 #include "runtime/Runtime.hpp"
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 
 struct xorshift32_state {
     uint32_t a;
@@ -45,8 +46,13 @@ static void apply_input(StateType* dut, int circuit_idx, int cycle) {
     // }
 }
 
-int main() {
-    Circuit circuit(256);
+int main(int argc, char *argv[]) {
+    size_t circuit_number = 16;
+    if (argc == 2) {
+        circuit_number = atoi(argv[1]);
+    }
+
+    Circuit circuit(circuit_number);
 
     constexpr int MAX = 1000;
     constexpr int STEP = std::max(MAX / 1000, 1);
@@ -77,4 +83,5 @@ int main() {
     fmt::println("Simulation Done!");
 
     circuit.get_stats().print();
+    circuit.get_stats().save_to_json("result.json");
 }
