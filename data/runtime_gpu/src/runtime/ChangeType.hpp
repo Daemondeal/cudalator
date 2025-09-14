@@ -47,3 +47,17 @@ static HOST_DEVICE ChangeType change_calculate(Bit<N> before, Bit<N> after) {
         return ChangeType::Change;
     }
 };
+
+HOST_DEVICE static ChangeType change_combine(ChangeType a, ChangeType b) {
+    switch (a) {
+    case ChangeType::NoChange:
+        return b;
+    case ChangeType::Change:
+        return ChangeType::Change;
+    case ChangeType::Posedge:
+        return (b == ChangeType::Posedge) ? ChangeType::Posedge : ChangeType::Change;
+    case ChangeType::Negedge:
+        return (b == ChangeType::Negedge) ? ChangeType::Negedge : ChangeType::Change;
+    }
+    return ChangeType::NoChange;
+}
