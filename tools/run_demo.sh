@@ -28,7 +28,7 @@ type nvidia-smi > /dev/null
 if [[ $? -ne 0 ]] ; then
   echo "No cuda version detected"
 else
-  cuda_version=$(nvidia-smi | grep "CUDA Version" | tr '|' ' ' | awk '{print $NF}' | tr '.' '')
+  cuda_version=$(nvidia-smi | grep "CUDA Version" | tr '|' ' ' | awk '{print $NF}' | tr -d '.')
   echo "Detected CUDA version $cuda_version"
   cuda_define="-DCUDA_VERSION=$cuda_version"
 fi
