@@ -9,11 +9,14 @@ r4mbe_dadda_multiplier_8bit dut (
 );
 
 initial begin
-    $dumpfile("test.vcd");
-    $dumpvars(0, dut);
-    i_A = 1;
-    i_B = 2;
-    #10;
+    int i;
+    // $dumpfile("test.vcd");
+    // $dumpvars(0, dut);
+    for (i = 0; i < 1000 * 8192; i++) begin
+        i_A = $urandom;
+        i_B = $urandom;
+        #1;
+    end
     $finish;
 end
 

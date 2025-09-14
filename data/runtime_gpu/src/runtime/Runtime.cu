@@ -14,7 +14,8 @@ Circuit::Circuit(int number_of_circuits)
     CUDA_CHECK(cudaMalloc(&d_diffs, diffs_size));
 
     // apparently a locked page allows for faster transfers
-    CUDA_CHECK(cudaHostAlloc(&h_diffs, diffs_size, cudaHostAllocDefault));
+    CUDA_CHECK(cudaHostAlloc(&h_diff_sum, sizeof(DiffType), cudaHostAllocDefault));
+    CUDA_CHECK(cudaMalloc(&d_diff_sum, sizeof(DiffType)));
     CUDA_CHECK(cudaMemset(d_states, 0, states_size));
     CUDA_CHECK(cudaMemset(d_previous_states, 0, states_size));
 
@@ -30,7 +31,7 @@ Circuit::~Circuit() {
     cudaFree(d_states);
     cudaFree(d_previous_states);
     cudaFree(d_diffs);
-    cudaFreeHost(h_diffs);
+    cudaFreeHost(h_diff_sum);
 }
 
 // We copy data to the GPU, we modify it and then copy it back
@@ -40,6 +41,45 @@ void Circuit::apply_input() {
         (m_num_circuits + threads_per_block - 1) / threads_per_block;
 
     cudalator_apply_input<<<blocks, threads_per_block>>>(d_states, m_cycles, m_num_circuits);
+}
+
+
+// State diff reduction kernel
+__global__ void reduction_change(DiffType *diffs, DiffType *res, size_t x_start, size_t y_start, size_t limit) {
+    int tid = threadIdx.x;
+
+    int block_id_x = blockIdx.x * blockDim.x + x_start;
+
+    int global_id_x = blockIdx.x * blockDim.x + tid + x_start;
+    int global_id_y = blockIdx.y + y_start;
+
+    int shared_limit = limit - block_id_x;
+
+    extern __shared__ ChangeType shared[];
+    if (global_id_x < limit) {
+        shared[tid] = diffs[global_id_x].change[global_id_y];
+    }
+    __syncthreads();
+
+    for (int offset = blockDim.x / 2; offset > 0; offset /= 2) {
+        if (tid < offset && tid < shared_limit && (tid+offset) < shared_limit) {
+            shared[tid] = change_combine(shared[tid], shared[tid + offset]);
+        }
+        __syncthreads();
+    }
+
+    // Atomically apply change
+    if (tid == 0) {
+        int assumed, old_change;
+        int *dest = (int*)&res->change[global_id_y];
+
+        old_change = *dest;
+        do {
+            assumed = old_change;
+            ChangeType combined = change_combine((ChangeType)assumed, shared[0]);
+            old_change = atomicCAS(dest, assumed, (int)combined);
+        } while (assumed != old_change);
+    }
 }
 
 void Circuit::eval() {
@@ -59,10 +99,50 @@ void Circuit::eval() {
         CUDA_CHECK(cudaGetLastError());
         m_stats.stop_counter(PerfEvent::CalculateStateDiff);
 
+
+        m_stats.start_counter(PerfEvent::MergeStateDiff);
+        CUDA_CHECK(cudaMemset(d_diff_sum, 0, sizeof(DiffType)));
+
+        constexpr uint32_t MAX_BLOCK_SIZE = 256;
+        constexpr uint32_t MAX_GRID_SIZE_X = 32;
+        constexpr uint32_t MAX_GRID_SIZE_Y = 32;
+
+        uint32_t y_remaining = sizeof(d_diff_sum->change)/sizeof(ChangeType);
+        uint32_t y_start = 0;
+        while (y_remaining > 0) {
+            uint32_t y_done = std::min(y_remaining, MAX_GRID_SIZE_Y);
+
+            uint32_t x_remaining = m_num_circuits;
+            uint32_t x_start = 0;
+            while (x_remaining > 0) {
+                uint32_t x_done = std::min(x_remaining, MAX_GRID_SIZE_X * MAX_BLOCK_SIZE);
+
+                dim3 block_size(MAX_BLOCK_SIZE, 1);
+                dim3 grid_size((x_done + MAX_BLOCK_SIZE - 1) / MAX_BLOCK_SIZE, y_done);
+                size_t shared_memory_size = MAX_BLOCK_SIZE * sizeof(ChangeType);
+                reduction_change<<<grid_size, block_size, shared_memory_size>>>(
+                    d_diffs,
+                    d_diff_sum,
+                    x_start,
+                    y_start,
+                    x_start+x_done
+                );
+
+                CUDA_CHECK( cudaPeekAtLastError() );
+
+                x_remaining -= x_done;
+                x_start += x_done;
+            }
+            y_remaining -= y_done;
+            y_start += y_done;
+        }
+        m_stats.stop_counter(PerfEvent::MergeStateDiff);
+
+
         m_stats.start_counter(PerfEvent::MemcopyStateForPopulating);
         // coying the diff results
-        CUDA_CHECK(cudaMemcpy(h_diffs, d_diffs,
-                              sizeof(DiffType) * m_num_circuits,
+        CUDA_CHECK(cudaMemcpy(h_diff_sum, d_diff_sum,
+                              sizeof(DiffType),
                               cudaMemcpyDeviceToHost));
         m_stats.stop_counter(PerfEvent::MemcopyStateForPopulating);
 
@@ -70,16 +150,13 @@ void Circuit::eval() {
         // cpu computation of the ready queue
         for (const auto& proc : m_processes) {
             bool should_run = false;
-            for (int c = 0; c < m_num_circuits && !should_run; ++c) {
-                const DiffType& diff = h_diffs[c];
-                for (auto [signal_idx, change_type] : proc.sensitivity) {
-                    auto actual = diff.change[signal_idx];
-                    if ((change_type == ChangeType::Change &&
-                         actual != ChangeType::NoChange) ||
-                        (change_type == actual)) {
-                        should_run = true;
-                        break;
-                    }
+            for (auto [signal_idx, change_type] : proc.sensitivity) {
+                auto actual = h_diff_sum->change[signal_idx];
+                if ((change_type == ChangeType::Change &&
+                     actual != ChangeType::NoChange) ||
+                    (change_type == actual)) {
+                    should_run = true;
+                    break;
                 }
             }
             if (should_run)

@@ -102,7 +102,7 @@ void Stats::save_to_json(std::string path_json) const {
     auto stats = gather_stats();
 
     auto fp = fmt::output_file(path_json);
-    fp.print("{\n");
+    fp.print("{{\n");
 
     for (size_t i = 0; i < stats.size(); ++i) {
         const auto& s = stats[i];
@@ -114,7 +114,7 @@ void Stats::save_to_json(std::string path_json) const {
     }
 
 
-    fp.print("}\n");
+    fp.print("}}\n");
 
 }
 

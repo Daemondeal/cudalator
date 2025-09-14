@@ -35,8 +35,13 @@ __global__ void cudalator_apply_input(StateType *dut, int cycle, size_t len) {
     dut[tid].i_B = Bit<8>(b % 256);
 }
 
-int main() {
-    Circuit circuit(256);
+int main(int argc, char *argv[]) {
+    size_t circuit_number = 256;
+    if (argc == 2) {
+        circuit_number = atoi(argv[1]);
+    }
+
+    Circuit circuit(circuit_number);
 
     constexpr int MAX = 1000;
     constexpr int STEP = std::max(MAX / 1000, 1);
@@ -67,4 +72,5 @@ int main() {
     fmt::println("Simulation Done!");
 
     circuit.get_stats().print();
+    circuit.get_stats().save_to_json("result.json");
 }

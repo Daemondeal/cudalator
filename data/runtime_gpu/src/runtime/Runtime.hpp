@@ -38,8 +38,9 @@ private:
     StateType* d_states;
     StateType* d_previous_states;
     DiffType* d_diffs;
+    DiffType* d_diff_sum;
 
-    DiffType* h_diffs;
+    DiffType* h_diff_sum;
 
     // cpu only
     std::vector<ProcType> m_processes;
