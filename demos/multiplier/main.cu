@@ -28,7 +28,7 @@ int main(int argc, char *argv[]) {
 
     constexpr int MAX = 1000;
 
-    // circuit.open_vcd("waves.vcd", 3);
+    circuit.open_vcd("waves.vcd", 72);
     fmt::println("Starting Simulation");
     for (int i = 0; i < MAX; i++) {
         cu::progress_display(i, MAX);
