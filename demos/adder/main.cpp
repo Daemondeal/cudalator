@@ -2,6 +2,7 @@
 
 #include "codegen/module.hpp"
 #include "runtime/Runtime.hpp"
+#include "runtime/Utils.hpp"
 
 static void apply_input(StateType* dut, int circuit_idx, int cycle) {
     int a = circuit_idx/2;
